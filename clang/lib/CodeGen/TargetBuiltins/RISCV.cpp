@@ -1082,6 +1082,35 @@ Value *CodeGenFunction::EmitRISCVBuiltinExpr(unsigned BuiltinID,
                                              const CallExpr *E,
                                              ReturnValueSlot ReturnValue) {
 
+  // YAI 第一个 bring-up 阶段：先把 builtin 变成带有真实 C++ 参数类型的
+  // target call，确保 Clang 可以完成语义分析并产出 LLVM IR。后续 RISCV
+  // 后端再把 __yai_* call 转换为 XTT/XTA/XTB/XTV 机器指令；这里暂时不
+  // 直接创建 LLVM intrinsic，避免在 LLVM IR intrinsic 表尚未加入 YAI
+  // 类型之前伪造一个错误的返回类型。
+  if (const FunctionDecl *FD = E->getDirectCallee()) {
+    StringRef BuiltinName = FD->getName();
+    StringRef Prefix = "__builtin_yai_";
+    if (BuiltinName.starts_with(Prefix)) {
+      SmallVector<Value *, 8> Args;
+      for (unsigned I = 0, ENum = E->getNumArgs(); I != ENum; ++I)
+        Args.push_back(EmitScalarOrConstFoldImmArg(0, I, E));
+
+      SmallVector<llvm::Type *, 8> ParamTypes;
+      for (Value *Arg : Args)
+        ParamTypes.push_back(Arg->getType());
+
+      llvm::Type *ResultType =
+          E->getType()->isVoidType() ? VoidTy : ConvertType(E->getType());
+      auto *FunctionType = llvm::FunctionType::get(ResultType, ParamTypes,
+                                                   /*isVarArg=*/false);
+      std::string TargetName =
+          ("__yai_" + BuiltinName.drop_front(Prefix.size())).str();
+      llvm::FunctionCallee Target =
+          CGM.getModule().getOrInsertFunction(TargetName, FunctionType);
+      return Builder.CreateCall(Target, Args);
+    }
+  }
+
   if (BuiltinID == Builtin::BI__builtin_cpu_supports)
     return EmitRISCVCpuSupports(E);
   if (BuiltinID == Builtin::BI__builtin_cpu_init)

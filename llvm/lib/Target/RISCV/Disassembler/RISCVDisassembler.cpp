@@ -74,6 +74,42 @@ LLVMInitializeRISCVDisassembler() {
                                          createRISCVDisassembler);
 }
 
+static DecodeStatus DecodeXTTRegisterClass(MCInst &Inst, uint32_t RegNo,
+                                           uint64_t Address,
+                                           const MCDisassembler *Decoder) {
+  if (RegNo >= 16)
+    return MCDisassembler::Fail;
+  Inst.addOperand(MCOperand::createReg(RISCV::XTT0 + RegNo));
+  return MCDisassembler::Success;
+}
+
+static DecodeStatus DecodeXTARegisterClass(MCInst &Inst, uint32_t RegNo,
+                                           uint64_t Address,
+                                           const MCDisassembler *Decoder) {
+  if (RegNo >= 16)
+    return MCDisassembler::Fail;
+  Inst.addOperand(MCOperand::createReg(RISCV::XTA0 + RegNo));
+  return MCDisassembler::Success;
+}
+
+static DecodeStatus DecodeXTVRegisterClass(MCInst &Inst, uint32_t RegNo,
+                                           uint64_t Address,
+                                           const MCDisassembler *Decoder) {
+  if (RegNo >= 32)
+    return MCDisassembler::Fail;
+  Inst.addOperand(MCOperand::createReg(RISCV::XTV0 + RegNo));
+  return MCDisassembler::Success;
+}
+
+static DecodeStatus DecodeXTBRegisterClass(MCInst &Inst, uint32_t RegNo,
+                                           uint64_t Address,
+                                           const MCDisassembler *Decoder) {
+  if (RegNo >= 32)
+    return MCDisassembler::Fail;
+  Inst.addOperand(MCOperand::createReg(RISCV::XTB0 + RegNo));
+  return MCDisassembler::Success;
+}
+
 static DecodeStatus DecodeGPRRegisterClass(MCInst &Inst, uint32_t RegNo,
                                            uint64_t Address,
                                            const MCDisassembler *Decoder) {

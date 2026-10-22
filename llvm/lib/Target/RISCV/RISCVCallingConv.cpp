@@ -545,6 +545,20 @@ bool llvm::CC_RISCV(unsigned ValNo, MVT ValVT, MVT LocVT,
   unsigned StoreSizeBytes = XLen / 8;
   Align StackAlign = Align(XLen / 8);
 
+  // YAI 的 Tile/Acc/Vec 值是专用寄存器引用，由调用 lowering 直接折叠，
+  // 不能通过 C ABI 传递。走到这里说明缺少 +xaicore，或者出现了不该有的
+  // ABI 边界。
+  switch (ValVT.SimpleTy) {
+  case MVT::v1024i8:
+  case MVT::v1024i32:
+  case MVT::v32i32:
+  case MVT::v32i8:
+    report_fatal_error("YAI tile/acc/vec value requires the +xaicore extension "
+                       "and cannot be passed through the C ABI");
+  default:
+    break;
+  }
+
   if (ValVT.isVector() || ValVT.isRISCVVectorTuple()) {
     Reg = allocateRVVReg(ValVT, ValNo, State, TLI);
     if (Reg) {

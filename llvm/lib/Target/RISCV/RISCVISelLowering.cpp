@@ -19,6 +19,7 @@
 #include "RISCVRegisterInfo.h"
 #include "RISCVSelectionDAGInfo.h"
 #include "RISCVSubtarget.h"
+#include "XAIcoreLowering.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
@@ -125,6 +126,20 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
 
   // Set up the register classes.
   addRegisterClass(XLenVT, &RISCV::GPRRegClass);
+
+  // Tile NPU：每个数据域一个寄存器类。
+  //   Tile  = 32x32 i8  -> v1024i8  -> XTT0..XTT15
+  //   Acc   = 32x32 i32 -> v1024i32 -> XTA0..XTA15
+  //   Vec32 = 32 x i32  -> v32i32   -> XTV0..XTV31
+  //   Vec8  = 32 x i8   -> v32i8    -> XTB0..XTB31
+  // 这些值只活在各自的寄存器类里，不允许落内存（见 RISCVInstrInfo 的
+  // spill 保护）。
+  if (Subtarget.hasVendorXAIcore()) {
+    addRegisterClass(MVT::v1024i8, &RISCV::XTTRegClass);
+    addRegisterClass(MVT::v1024i32, &RISCV::XTARegClass);
+    addRegisterClass(MVT::v32i32, &RISCV::XTVRegClass);
+    addRegisterClass(MVT::v32i8, &RISCV::XTBRegClass);
+  }
 
   if (Subtarget.hasStdExtZfhmin())
     addRegisterClass(MVT::f16, &RISCV::FPR16RegClass);
@@ -2380,9 +2395,29 @@ bool RISCVTargetLowering::isExtractSubvectorCheap(EVT ResVT, EVT SrcVT,
   return (ResElts * 2) == SrcElts && (Index == 0 || Index == ResElts);
 }
 
+/// XAIcore 的四个值载体（Tile/Acc/Vec32/Vec8）。它们都是“寄存器引用”，
+/// 走专门的寄存器类，不参与标量 ABI。
+static bool isXAIcoreValueType(EVT VT) {
+  if (!VT.isSimple())
+    return false;
+  switch (VT.getSimpleVT().SimpleTy) {
+  case MVT::v1024i8:  // Tile
+  case MVT::v1024i32: // Acc
+  case MVT::v32i32:   // Vec32
+  case MVT::v32i8:    // Vec8
+    return true;
+  default:
+    return false;
+  }
+}
+
 MVT RISCVTargetLowering::getRegisterTypeForCallingConv(LLVMContext &Context,
                                                       CallingConv::ID CC,
                                                       EVT VT) const {
+  // Tile/Acc/Vec 值由各自寄存器类承载，必须整体传递，不参与 ABI 拆分。
+  if (Subtarget.hasVendorXAIcore() && isXAIcoreValueType(VT))
+    return VT.getSimpleVT();
+
   // Use f32 to pass f16 if it is legal and Zfh/Zfhmin is not enabled.
   // We might still end up using a GPR but that will be decided based on ABI.
   if (VT == MVT::f16 && Subtarget.hasStdExtFOrZfinx() &&
@@ -2408,6 +2443,10 @@ RISCVTargetLowering::getNumRegisters(LLVMContext &Context, EVT VT,
 unsigned RISCVTargetLowering::getNumRegistersForCallingConv(LLVMContext &Context,
                                                            CallingConv::ID CC,
                                                            EVT VT) const {
+  // Tile/Acc/Vec 值各占一个寄存器。
+  if (Subtarget.hasVendorXAIcore() && isXAIcoreValueType(VT))
+    return 1;
+
   // Use f32 to pass f16 if it is legal and Zfh/Zfhmin is not enabled.
   // We might still end up using a GPR but that will be decided based on ABI.
   if (VT == MVT::f16 && Subtarget.hasStdExtFOrZfinx() &&
@@ -2420,6 +2459,13 @@ unsigned RISCVTargetLowering::getNumRegistersForCallingConv(LLVMContext &Context
 unsigned RISCVTargetLowering::getVectorTypeBreakdownForCallingConv(
     LLVMContext &Context, CallingConv::ID CC, EVT VT, EVT &IntermediateVT,
     unsigned &NumIntermediates, MVT &RegisterVT) const {
+  if (Subtarget.hasVendorXAIcore() && isXAIcoreValueType(VT)) {
+    IntermediateVT = VT;
+    NumIntermediates = 1;
+    RegisterVT = VT.getSimpleVT();
+    return 1;
+  }
+
   unsigned NumRegs = TargetLowering::getVectorTypeBreakdownForCallingConv(
       Context, CC, VT, IntermediateVT, NumIntermediates, RegisterVT);
 
@@ -22509,6 +22555,12 @@ SDValue RISCVTargetLowering::LowerCall(CallLoweringInfo &CLI,
 
   MachineFunction &MF = DAG.getMachineFunction();
 
+  // YAI/Tile NPU 固定 t0 阶段：在分配 ABI 位置之前识别 __yai_* 调用，
+  // 直接折叠成 YAI 机器指令，不生成真实调用。
+  if (Subtarget.hasVendorXAIcore())
+    if (SDValue XAIcoreCall = lowerXAIcoreBuiltinCall(Subtarget, CLI, InVals))
+      return XAIcoreCall;
+
   // Analyze the operands of the call, assigning locations to each operand.
   SmallVector<CCValAssign, 16> ArgLocs;
   CCState ArgCCInfo(CallConv, IsVarArg, MF, ArgLocs, *DAG.getContext());
@@ -22820,6 +22872,9 @@ bool RISCVTargetLowering::CanLowerReturn(
 
   for (unsigned i = 0, e = Outs.size(); i != e; ++i) {
     MVT VT = Outs[i].VT;
+    // Tile/Acc/Vec 值由 XAIcore 的调用 lowering 直接折叠，不参与 ABI 返回约定。
+    if (Subtarget.hasVendorXAIcore() && isXAIcoreValueType(VT))
+      continue;
     ISD::ArgFlagsTy ArgFlags = Outs[i].Flags;
     if (CC_RISCV(i, VT, VT, CCValAssign::Full, ArgFlags, CCInfo,
                  /*IsFixed=*/true, /*IsRet=*/true, nullptr))

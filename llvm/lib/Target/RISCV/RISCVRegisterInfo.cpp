@@ -16,6 +16,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
+#include "llvm/CodeGen/LiveInterval.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
@@ -23,6 +24,7 @@
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/Support/ErrorHandling.h"
+#include <map>
 
 #define GET_REGINFO_TARGET_DESC
 #include "RISCVGenRegisterInfo.inc"
@@ -807,6 +809,33 @@ StringRef RISCVRegisterInfo::getRegAsmName(MCRegister Reg) const {
   return TargetRegisterInfo::getRegAsmName(Reg);
 }
 
+namespace {
+// XAIcore 的 tile/acc/vec 寄存器是“私有寄存器文件”：普通函数（libgcc 的
+// 软浮点辅助函数等）不使用它们。把它们加入 call-preserved mask 后，调用点
+// 不再把它们标成 clobbered，NPU 值可以跨 call 存活。
+//
+// 契约：所有使用 tile/acc/vec 的函数必须内联；外部函数（libgcc、scalar
+// helper）不得使用这些寄存器。违反契约会导致 NPU 值被 callee 破坏。
+const uint32_t *withXAIcorePreserved(const uint32_t *Base) {
+  static std::map<const uint32_t *, std::vector<uint32_t>> Cache;
+  auto It = Cache.find(Base);
+  if (It != Cache.end())
+    return It->second.data();
+  std::vector<uint32_t> Mask((RISCV::NUM_TARGET_REGS + 31) / 32);
+  std::copy(Base, Base + Mask.size(), Mask.begin());
+  auto Add = [&](const TargetRegisterClass &RC) {
+    for (MCPhysReg R : RC)
+      Mask[R / 32] |= 1u << (R % 32);
+  };
+  Add(RISCV::XTTRegClass);
+  Add(RISCV::XTARegClass);
+  Add(RISCV::XTVRegClass);
+  Add(RISCV::XTBRegClass);
+  auto Res = Cache.emplace(Base, std::move(Mask));
+  return Res.first->second.data();
+}
+} // namespace
+
 const uint32_t *
 RISCVRegisterInfo::getCallPreservedMask(const MachineFunction & MF,
                                         CallingConv::ID CC) const {
@@ -825,22 +854,22 @@ RISCVRegisterInfo::getCallPreservedMask(const MachineFunction & MF,
     llvm_unreachable("Unrecognized ABI");
   case RISCVABI::ABI_ILP32E:
   case RISCVABI::ABI_LP64E:
-    return CSR_ILP32E_LP64E_RegMask;
+    return withXAIcorePreserved(CSR_ILP32E_LP64E_RegMask);
   case RISCVABI::ABI_ILP32:
   case RISCVABI::ABI_LP64:
     if (CC == CallingConv::RISCV_VectorCall)
-      return CSR_ILP32_LP64_V_RegMask;
-    return CSR_ILP32_LP64_RegMask;
+      return withXAIcorePreserved(CSR_ILP32_LP64_V_RegMask);
+    return withXAIcorePreserved(CSR_ILP32_LP64_RegMask);
   case RISCVABI::ABI_ILP32F:
   case RISCVABI::ABI_LP64F:
     if (CC == CallingConv::RISCV_VectorCall)
-      return CSR_ILP32F_LP64F_V_RegMask;
-    return CSR_ILP32F_LP64F_RegMask;
+      return withXAIcorePreserved(CSR_ILP32F_LP64F_V_RegMask);
+    return withXAIcorePreserved(CSR_ILP32F_LP64F_RegMask);
   case RISCVABI::ABI_ILP32D:
   case RISCVABI::ABI_LP64D:
     if (CC == CallingConv::RISCV_VectorCall)
-      return CSR_ILP32D_LP64D_V_RegMask;
-    return CSR_ILP32D_LP64D_RegMask;
+      return withXAIcorePreserved(CSR_ILP32D_LP64D_V_RegMask);
+    return withXAIcorePreserved(CSR_ILP32D_LP64D_RegMask);
   }
 }
 
@@ -1047,4 +1076,30 @@ bool RISCVRegisterInfo::getRegAllocationHints(
       Hints.push_back(OrderReg);
 
   return BaseImplRetVal;
+}
+
+bool RISCVRegisterInfo::shouldRegionSplitForVirtReg(
+    const MachineFunction &MF, const LiveInterval &VirtReg) const {
+  if (!VirtReg.reg().isVirtual())
+    return true;
+  const TargetRegisterClass *RC = MF.getRegInfo().getRegClass(VirtReg.reg());
+  if (RISCV::XTTRegClass.hasSubClassEq(RC) ||
+      RISCV::XTARegClass.hasSubClassEq(RC) ||
+      RISCV::XTVRegClass.hasSubClassEq(RC) ||
+      RISCV::XTBRegClass.hasSubClassEq(RC))
+    return false;
+  return true;
+}
+
+bool RISCVRegisterInfo::isSpillableForVirtReg(
+    const MachineFunction &MF, const LiveInterval &VirtReg) const {
+  if (!VirtReg.reg().isVirtual())
+    return true;
+  const TargetRegisterClass *RC = MF.getRegInfo().getRegClass(VirtReg.reg());
+  if (RISCV::XTTRegClass.hasSubClassEq(RC) ||
+      RISCV::XTARegClass.hasSubClassEq(RC) ||
+      RISCV::XTVRegClass.hasSubClassEq(RC) ||
+      RISCV::XTBRegClass.hasSubClassEq(RC))
+    return false;
+  return true;
 }

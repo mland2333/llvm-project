@@ -16,6 +16,7 @@
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstPrinter.h"
+#include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/CommandLine.h"
@@ -210,6 +211,105 @@ void RISCVInstPrinter::printZeroOffsetMemOp(const MCInst *MI, unsigned OpNo,
   O << "(";
   printRegName(O, MO.getReg());
   O << ")";
+}
+
+// Tile 数据寄存器按编码打印成 tN / tcN / tmN。名字来自寄存器编号而不是
+// MC 寄存器名，避免与 GPR 的 ABI 别名 tN 冲突。
+void RISCVInstPrinter::printXAIcoreTileReg(const MCInst *MI, unsigned OpNo,
+                                           const MCSubtargetInfo &STI,
+                                           raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+  assert(MO.isReg() && "printXAIcoreTileReg expects a register operand");
+  O << "t" << MRI.getEncodingValue(MO.getReg());
+}
+
+// Acc / Vec 寄存器按编码打印成 aN / vN / bN（以及 ac/am、vc/vm、bc/bm）。
+void RISCVInstPrinter::printXAIcoreAccReg(const MCInst *MI, unsigned OpNo,
+                                          const MCSubtargetInfo &STI,
+                                          raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+  assert(MO.isReg() && "printXAIcoreAccReg expects a register operand");
+  O << "a" << MRI.getEncodingValue(MO.getReg());
+}
+
+void RISCVInstPrinter::printXAIcoreAccConfig(const MCInst *MI, unsigned OpNo,
+                                             const MCSubtargetInfo &STI,
+                                             raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+  assert(MO.isReg() && "printXAIcoreAccConfig expects a register operand");
+  O << "ac" << MRI.getEncodingValue(MO.getReg());
+}
+
+void RISCVInstPrinter::printXAIcoreAccMemory(const MCInst *MI, unsigned OpNo,
+                                             const MCSubtargetInfo &STI,
+                                             raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+  assert(MO.isReg() && "printXAIcoreAccMemory expects a register operand");
+  O << "am" << MRI.getEncodingValue(MO.getReg());
+}
+
+void RISCVInstPrinter::printXAIcoreVec32Reg(const MCInst *MI, unsigned OpNo,
+                                            const MCSubtargetInfo &STI,
+                                            raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+  assert(MO.isReg() && "printXAIcoreVec32Reg expects a register operand");
+  O << "v" << MRI.getEncodingValue(MO.getReg());
+}
+
+void RISCVInstPrinter::printXAIcoreVec32Config(const MCInst *MI, unsigned OpNo,
+                                               const MCSubtargetInfo &STI,
+                                               raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+  assert(MO.isReg() && "printXAIcoreVec32Config expects a register operand");
+  O << "vc" << MRI.getEncodingValue(MO.getReg());
+}
+
+void RISCVInstPrinter::printXAIcoreVec32Memory(const MCInst *MI, unsigned OpNo,
+                                               const MCSubtargetInfo &STI,
+                                               raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+  assert(MO.isReg() && "printXAIcoreVec32Memory expects a register operand");
+  O << "vm" << MRI.getEncodingValue(MO.getReg());
+}
+
+void RISCVInstPrinter::printXAIcoreVec8Reg(const MCInst *MI, unsigned OpNo,
+                                           const MCSubtargetInfo &STI,
+                                           raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+  assert(MO.isReg() && "printXAIcoreVec8Reg expects a register operand");
+  O << "b" << MRI.getEncodingValue(MO.getReg());
+}
+
+void RISCVInstPrinter::printXAIcoreVec8Config(const MCInst *MI, unsigned OpNo,
+                                              const MCSubtargetInfo &STI,
+                                              raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+  assert(MO.isReg() && "printXAIcoreVec8Config expects a register operand");
+  O << "bc" << MRI.getEncodingValue(MO.getReg());
+}
+
+void RISCVInstPrinter::printXAIcoreVec8Memory(const MCInst *MI, unsigned OpNo,
+                                              const MCSubtargetInfo &STI,
+                                              raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+  assert(MO.isReg() && "printXAIcoreVec8Memory expects a register operand");
+  O << "bm" << MRI.getEncodingValue(MO.getReg());
+}
+
+void RISCVInstPrinter::printXAIcoreTileConfig(const MCInst *MI, unsigned OpNo,
+                                              const MCSubtargetInfo &STI,
+                                              raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+  assert(MO.isReg() && "printXAIcoreTileConfig expects a register operand");
+  O << "tc" << MRI.getEncodingValue(MO.getReg());
+}
+
+void RISCVInstPrinter::printXAIcoreTileMemory(const MCInst *MI, unsigned OpNo,
+                                              const MCSubtargetInfo &STI,
+                                              raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+  assert(MO.isReg() && "printXAIcoreTileMemory expects a register operand");
+  O << "tm" << MRI.getEncodingValue(MO.getReg());
 }
 
 void RISCVInstPrinter::printVTypeI(const MCInst *MI, unsigned OpNo,

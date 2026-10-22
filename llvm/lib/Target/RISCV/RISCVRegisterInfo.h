@@ -76,6 +76,14 @@ struct RISCVRegisterInfo : public RISCVGenRegisterInfo {
   bool isAsmClobberable(const MachineFunction &MF,
                         MCRegister PhysReg) const override;
 
+  // tile/acc/vec 值没有普通 load/store 的 legalization（spill 是 fatal），
+  // 关掉 region split：否则 RA 会把跨循环区域的片段规划成 spill。
+  bool shouldRegionSplitForVirtReg(const MachineFunction &MF,
+                                   const LiveInterval &VirtReg) const override;
+
+  bool isSpillableForVirtReg(const MachineFunction &MF,
+                             const LiveInterval &VirtReg) const override;
+
   const uint32_t *getNoPreservedMask() const override;
 
   // Update DestReg to have the value SrcReg plus an offset.  This is

@@ -2557,6 +2557,11 @@ MCRegister RAGreedy::selectOrSplitImpl(const LiveInterval &VirtReg,
                                        SmallVirtRegSet &FixedRegisters,
                                        RecoloringStack &RecolorStack,
                                        unsigned Depth) {
+  // Targets may declare a vreg unspillable (e.g. no load/store for its class).
+  // Mark it before any spill decision so it falls back to recoloring instead.
+  if (TRI && VirtReg.isSpillable() && !TRI->isSpillableForVirtReg(*MF, VirtReg))
+    const_cast<LiveInterval &>(VirtReg).markNotSpillable();
+
   uint8_t CostPerUseLimit = uint8_t(~0u);
   // First try assigning a free register.
   auto Order =

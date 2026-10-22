@@ -522,6 +522,28 @@ void RISCVInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     return;
   }
 
+  // Tile NPU：同类寄存器之间的拷贝用对应的 copy 指令。
+  if (RISCV::XTTRegClass.contains(DstReg, SrcReg)) {
+    BuildMI(MBB, MBBI, DL, get(RISCV::XAIcoreTCopy), DstReg)
+        .addReg(SrcReg, KillFlag | getRenamableRegState(RenamableSrc));
+    return;
+  }
+  if (RISCV::XTARegClass.contains(DstReg, SrcReg)) {
+    BuildMI(MBB, MBBI, DL, get(RISCV::XAIcoreACopy), DstReg)
+        .addReg(SrcReg, KillFlag | getRenamableRegState(RenamableSrc));
+    return;
+  }
+  if (RISCV::XTVRegClass.contains(DstReg, SrcReg)) {
+    BuildMI(MBB, MBBI, DL, get(RISCV::XAIcoreVCopy), DstReg)
+        .addReg(SrcReg, KillFlag | getRenamableRegState(RenamableSrc));
+    return;
+  }
+  if (RISCV::XTBRegClass.contains(DstReg, SrcReg)) {
+    BuildMI(MBB, MBBI, DL, get(RISCV::XAIcoreBCopy), DstReg)
+        .addReg(SrcReg, KillFlag | getRenamableRegState(RenamableSrc));
+    return;
+  }
+
   if (RISCV::GPRF16RegClass.contains(DstReg, SrcReg)) {
     BuildMI(MBB, MBBI, DL, get(RISCV::PseudoMV_FPR16INX), DstReg)
         .addReg(SrcReg, KillFlag | getRenamableRegState(RenamableSrc));
@@ -695,6 +717,11 @@ void RISCVInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
     Opcode = RISCV::PseudoVSPILL7_M1;
   else if (RISCV::VRN8M1RegClass.hasSubClassEq(RC))
     Opcode = RISCV::PseudoVSPILL8_M1;
+  else if (RISCV::XTTRegClass.hasSubClassEq(RC) ||
+           RISCV::XTARegClass.hasSubClassEq(RC) ||
+           RISCV::XTVRegClass.hasSubClassEq(RC) ||
+           RISCV::XTBRegClass.hasSubClassEq(RC))
+    report_fatal_error("YAI tile/acc/vec register cannot be spilled to memory");
   else
     llvm_unreachable("Can't store this register to stack slot");
 
@@ -779,6 +806,11 @@ void RISCVInstrInfo::loadRegFromStackSlot(
     Opcode = RISCV::PseudoVRELOAD7_M1;
   else if (RISCV::VRN8M1RegClass.hasSubClassEq(RC))
     Opcode = RISCV::PseudoVRELOAD8_M1;
+  else if (RISCV::XTTRegClass.hasSubClassEq(RC) ||
+           RISCV::XTARegClass.hasSubClassEq(RC) ||
+           RISCV::XTVRegClass.hasSubClassEq(RC) ||
+           RISCV::XTBRegClass.hasSubClassEq(RC))
+    report_fatal_error("YAI tile/acc/vec register cannot be reloaded from memory");
   else
     llvm_unreachable("Can't load this register from stack slot");
 

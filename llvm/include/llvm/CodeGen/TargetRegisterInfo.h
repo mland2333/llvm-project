@@ -1179,6 +1179,15 @@ public:
   virtual bool shouldRegionSplitForVirtReg(const MachineFunction &MF,
                                            const LiveInterval &VirtReg) const;
 
+  /// Return true if \p VirtReg may be spilled to memory. Targets whose
+  /// register class has no legal load/store (and no spill/reload path) should
+  /// return false; the register allocator will then avoid spilling it and
+  /// fall back to recoloring.
+  virtual bool isSpillableForVirtReg(const MachineFunction &MF,
+                                     const LiveInterval &VirtReg) const {
+    return true;
+  }
+
   /// Last chance recoloring has a high compile time cost especially for
   /// targets with a lot of registers.
   /// This method is used to decide whether or not \p VirtReg should

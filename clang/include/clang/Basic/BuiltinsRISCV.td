@@ -156,4 +156,128 @@ def pause : RISCVBuiltin<"void()">;
 //===----------------------------------------------------------------------===//
 // XCV extensions.
 //===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// Tile NPU/YAI experimental builtins.
+// These are initially lowered to target calls by CodeGen; the RISCV backend
+// will later replace those calls with YAI machine instructions.
+//===----------------------------------------------------------------------===//
+class YAIBuiltin<string prototype> : TargetBuiltin {
+  let Spellings = ["__builtin_yai_" # NAME];
+  let Prototype = prototype;
+  let Attributes = [CustomTypeChecking, NoThrow];
+  // Tile/Acc/Vec 值是 xaicore 专用载体，没有扩展时不能编译。
+  let Features = "xaicore";
+}
+
+def acc_abs : YAIBuiltin<"void(...)">;
+def acc_add : YAIBuiltin<"_Vector<1024, int>(...)">;
+def acc_add_inplace : YAIBuiltin<"void(...)">;
+def acc_add_scalar : YAIBuiltin<"void(...)">;
+def acc_add_vec : YAIBuiltin<"void(...)">;
+def acc_cos : YAIBuiltin<"void(...)">;
+def acc_create : YAIBuiltin<"_Vector<1024, int>(...)">;
+def acc_div : YAIBuiltin<"_Vector<1024, int>(...)">;
+def acc_div_inplace : YAIBuiltin<"void(...)">;
+def acc_div_vec : YAIBuiltin<"void(...)">;
+def acc_exp : YAIBuiltin<"void(...)">;
+def acc_fill : YAIBuiltin<"void(...)">;
+def acc_get_base : YAIBuiltin<"void*(...)">;
+def acc_get_data : YAIBuiltin<"void*(...)">;
+def acc_get_dtype : YAIBuiltin<"uint64_t(...)">;
+def acc_get_stride : YAIBuiltin<"uint64_t(...)">;
+def acc_get_valid_zone : YAIBuiltin<"uint64_t(...)">;
+def acc_load : YAIBuiltin<"void(...)">;
+def acc_mask : YAIBuiltin<"void(...)">;
+def acc_mul : YAIBuiltin<"_Vector<1024, int>(...)">;
+def acc_mul_inplace : YAIBuiltin<"void(...)">;
+def acc_mul_scalar : YAIBuiltin<"void(...)">;
+def acc_mul_vec : YAIBuiltin<"void(...)">;
+def acc_quant : YAIBuiltin<"void(...)">;
+def acc_quant_ext : YAIBuiltin<"void(...)">;
+def acc_row_absmax : YAIBuiltin<"_Vector<32, int>(...)">;
+def acc_row_absmax_merge : YAIBuiltin<"void(...)">;
+def acc_row_argmax : YAIBuiltin<"_Vector<32, int>(...)">;
+def acc_row_argmax_merge : YAIBuiltin<"void(...)">;
+def acc_row_max : YAIBuiltin<"_Vector<32, int>(...)">;
+def acc_row_max_merge : YAIBuiltin<"void(...)">;
+def acc_row_sum : YAIBuiltin<"_Vector<32, int>(...)">;
+def acc_row_sum_merge : YAIBuiltin<"void(...)">;
+def acc_row_sum_sq : YAIBuiltin<"_Vector<32, int>(...)">;
+def acc_row_sum_sq_merge : YAIBuiltin<"void(...)">;
+def acc_set_base : YAIBuiltin<"void(...)">;
+def acc_set_data : YAIBuiltin<"void(...)">;
+def acc_set_dtype : YAIBuiltin<"void(...)">;
+def acc_set_stride : YAIBuiltin<"void(...)">;
+def acc_set_strides : YAIBuiltin<"void(...)">;
+def acc_set_valid_zone : YAIBuiltin<"void(...)">;
+def acc_set_valid_zone_pair : YAIBuiltin<"void(...)">;
+def acc_silu : YAIBuiltin<"void(...)">;
+def acc_sin : YAIBuiltin<"void(...)">;
+def acc_store : YAIBuiltin<"void(...)">;
+def acc_sub : YAIBuiltin<"_Vector<1024, int>(...)">;
+def acc_sub_inplace : YAIBuiltin<"void(...)">;
+def acc_sub_vec : YAIBuiltin<"void(...)">;
+def acc_to_fp32 : YAIBuiltin<"void(...)">;
+def tile_create : YAIBuiltin<"_Vector<1024, char>(...)">;
+def tile_dequant : YAIBuiltin<"_Vector<1024, int>(...)">;
+def tile_fill : YAIBuiltin<"void(...)">;
+def tile_gather_from_vec : YAIBuiltin<"void(...)">;
+def tile_get_base : YAIBuiltin<"void*(...)">;
+def tile_get_data : YAIBuiltin<"void*(...)">;
+def tile_get_dtype : YAIBuiltin<"uint64_t(...)">;
+def tile_get_stride : YAIBuiltin<"uint64_t(...)">;
+def tile_get_transpose : YAIBuiltin<"uint64_t(...)">;
+def tile_get_valid_zone : YAIBuiltin<"uint64_t(...)">;
+def tile_load : YAIBuiltin<"void(...)">;
+def tile_matmul : YAIBuiltin<"void(...)">;
+def tile_set_base : YAIBuiltin<"void(...)">;
+def tile_set_data : YAIBuiltin<"void(...)">;
+def tile_set_dtype : YAIBuiltin<"void(...)">;
+def tile_set_stride : YAIBuiltin<"void(...)">;
+def tile_set_strides : YAIBuiltin<"void(...)">;
+def tile_set_transpose : YAIBuiltin<"void(...)">;
+def tile_set_valid_zone : YAIBuiltin<"void(...)">;
+def tile_set_valid_zone_pair : YAIBuiltin<"void(...)">;
+def tile_store : YAIBuiltin<"void(...)">;
+def vec32_add : YAIBuiltin<"void(...)">;
+def vec32_add_scalar : YAIBuiltin<"void(...)">;
+def vec32_copy : YAIBuiltin<"_Vector<32, int>(...)">;
+def tile_widen : YAIBuiltin<"void(...)">;
+def vec32_create : YAIBuiltin<"_Vector<32, int>(...)">;
+def vec32_div : YAIBuiltin<"void(...)">;
+def vec32_exp : YAIBuiltin<"void(...)">;
+def vec32_fill : YAIBuiltin<"void(...)">;
+def vec32_gather_from_vec : YAIBuiltin<"void(...)">;
+def vec32_get_base : YAIBuiltin<"void*(...)">;
+def vec32_get_data : YAIBuiltin<"void*(...)">;
+def vec32_get_dtype : YAIBuiltin<"uint64_t(...)">;
+def vec32_get_stride : YAIBuiltin<"uint64_t(...)">;
+def vec32_get_valid_zone : YAIBuiltin<"uint64_t(...)">;
+def vec32_load : YAIBuiltin<"void(...)">;
+def vec32_max : YAIBuiltin<"void(...)">;
+def vec32_mul : YAIBuiltin<"void(...)">;
+def vec32_mul_scalar : YAIBuiltin<"void(...)">;
+def vec32_rsqrt : YAIBuiltin<"void(...)">;
+def vec32_set_base : YAIBuiltin<"void(...)">;
+def vec32_set_data : YAIBuiltin<"void(...)">;
+def vec32_set_dtype : YAIBuiltin<"void(...)">;
+def vec32_set_stride : YAIBuiltin<"void(...)">;
+def vec32_set_valid_zone : YAIBuiltin<"void(...)">;
+def vec32_store : YAIBuiltin<"void(...)">;
+def vec32_sub : YAIBuiltin<"void(...)">;
+def vec8_create : YAIBuiltin<"_Vector<32, char>(...)">;
+def vec8_gather_from_vec : YAIBuiltin<"void(...)">;
+def vec8_get_base : YAIBuiltin<"void*(...)">;
+def vec8_get_data : YAIBuiltin<"void*(...)">;
+def vec8_get_dtype : YAIBuiltin<"uint64_t(...)">;
+def vec8_get_stride : YAIBuiltin<"uint64_t(...)">;
+def vec8_get_valid_zone : YAIBuiltin<"uint64_t(...)">;
+def vec8_load : YAIBuiltin<"void(...)">;
+def vec8_set_base : YAIBuiltin<"void(...)">;
+def vec8_set_data : YAIBuiltin<"void(...)">;
+def vec8_set_dtype : YAIBuiltin<"void(...)">;
+def vec8_set_stride : YAIBuiltin<"void(...)">;
+def vec8_set_valid_zone : YAIBuiltin<"void(...)">;
+def vec8_store : YAIBuiltin<"void(...)">;
 include "clang/Basic/BuiltinsRISCVXCV.td"

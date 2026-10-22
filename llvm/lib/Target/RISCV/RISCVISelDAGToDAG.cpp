@@ -1003,6 +1003,29 @@ void RISCVDAGToDAGISel::Select(SDNode *Node) {
   unsigned Opcode = Node->getOpcode();
   MVT XLenVT = Subtarget->getXLenVT();
   SDLoc DL(Node);
+
+  // Tile 值只允许活在 XTT 寄存器里。出现 v1024i8 的 load/store 说明前端没有
+  // 优化掉 Tile 对象的内存表示（典型是 -O0）。给出面向用户的诊断，而不是
+  // 让 isel 报 "Cannot select"。
+  if (Subtarget->hasVendorXAIcore() &&
+      (Opcode == ISD::LOAD || Opcode == ISD::STORE)) {
+    EVT MemVT = Opcode == ISD::LOAD
+                    ? cast<LoadSDNode>(Node)->getMemoryVT()
+                    : cast<StoreSDNode>(Node)->getMemoryVT();
+    if (MemVT == MVT::v1024i8)
+      report_fatal_error("YAI tile value cannot be stored in memory; compile "
+                         "the tile code with -O1 so it stays in an XTT "
+                         "register");
+  }
+
+  // ISA 没有条件移动 Tile 寄存器的指令，select/三目需要 IR 级展开成
+  // 分支 + PHI。先给出明确诊断，避免 isel 的 "Cannot select"。
+  if (Subtarget->hasVendorXAIcore() &&
+      (Opcode == ISD::SELECT || Opcode == ISD::VSELECT) &&
+      Node->getValueType(0) == MVT::v1024i8)
+    report_fatal_error(
+        "YAI tile value cannot be conditionally selected between two "
+        "registers; use a Tile reference/pointer or an explicit phi instead");
   MVT VT = Node->getSimpleValueType(0);
 
   bool HasBitTest = Subtarget->hasStdExtZbs() || Subtarget->hasVendorXTHeadBs();

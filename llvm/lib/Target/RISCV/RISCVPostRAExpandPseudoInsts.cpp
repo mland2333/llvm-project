@@ -16,6 +16,7 @@
 #include "RISCVInstrInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/TargetOpcodes.h"
 
 using namespace llvm;
 
@@ -76,6 +77,21 @@ bool RISCVPostRAExpandPseudo::expandMI(MachineBasicBlock &MBB,
     return expandMovImm(MBB, MBBI);
   case RISCV::PseudoMovAddr:
     return expandMovAddr(MBB, MBBI);
+  case RISCV::XAIcoreTCreate:
+  case RISCV::XAIcoreACreate:
+  case RISCV::XAIcoreVec32Create:
+  case RISCV::XAIcoreVec8Create: {
+    // *_create 只是为一个值分配物理寄存器，没有真实的机器动作。
+    // 用 IMPLICIT_DEF 只给出“这个物理寄存器被定义”的信息：它不产生任何
+    // 机器码（AsmPrinter 会跳过），因此也不会像 tcopy/fillx 那样要求寄存
+    // 器已经配置好（Tile-NPU-Sim 对未配置寄存器的 copy 会报
+    // invalid_configuration）。
+    Register DstReg = MBBI->getOperand(0).getReg();
+    BuildMI(MBB, MBBI, MBBI->getDebugLoc(),
+            TII->get(TargetOpcode::IMPLICIT_DEF), DstReg);
+    MBBI->eraseFromParent();
+    return true;
+  }
   default:
     return false;
   }
