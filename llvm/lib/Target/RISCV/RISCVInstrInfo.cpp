@@ -522,23 +522,38 @@ void RISCVInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     return;
   }
 
-  // Tile NPU：同类寄存器之间的拷贝用对应的 copy 指令。
+  // Tile NPU：同类寄存器之间的拷贝。**必须先 cfg.copy 复制描述符再复制数据**：
+  // 描述符（dtype/len/rows/cols、base/strides）是按物理寄存器编号索引的旁路
+  // 状态，只搬数据会留下陈旧的元数据（数据对、形状/地址错 → 静默算错或
+  // invalid_configuration）。RA 为 coalescing 失败/循环携带值插入的拷贝会走这里。
   if (RISCV::XTTRegClass.contains(DstReg, SrcReg)) {
+    BuildMI(MBB, MBBI, DL, get(RISCV::XAIcoreCfgCopyTC))
+        .addReg(DstReg)
+        .addReg(SrcReg);
     BuildMI(MBB, MBBI, DL, get(RISCV::XAIcoreTCopy), DstReg)
         .addReg(SrcReg, KillFlag | getRenamableRegState(RenamableSrc));
     return;
   }
   if (RISCV::XTARegClass.contains(DstReg, SrcReg)) {
+    BuildMI(MBB, MBBI, DL, get(RISCV::XAIcoreCfgCopyAC))
+        .addReg(DstReg)
+        .addReg(SrcReg);
     BuildMI(MBB, MBBI, DL, get(RISCV::XAIcoreACopy), DstReg)
         .addReg(SrcReg, KillFlag | getRenamableRegState(RenamableSrc));
     return;
   }
   if (RISCV::XTVRegClass.contains(DstReg, SrcReg)) {
+    BuildMI(MBB, MBBI, DL, get(RISCV::XAIcoreCfgCopyVC))
+        .addReg(DstReg)
+        .addReg(SrcReg);
     BuildMI(MBB, MBBI, DL, get(RISCV::XAIcoreVCopy), DstReg)
         .addReg(SrcReg, KillFlag | getRenamableRegState(RenamableSrc));
     return;
   }
   if (RISCV::XTBRegClass.contains(DstReg, SrcReg)) {
+    BuildMI(MBB, MBBI, DL, get(RISCV::XAIcoreCfgCopyBC))
+        .addReg(DstReg)
+        .addReg(SrcReg);
     BuildMI(MBB, MBBI, DL, get(RISCV::XAIcoreBCopy), DstReg)
         .addReg(SrcReg, KillFlag | getRenamableRegState(RenamableSrc));
     return;

@@ -582,7 +582,6 @@ def XAIcoreCfgSetxVMStride
   let Inst{6-2} = d;
   let Inst{11-7} = rs1;
 }
-
 //===----------------------------------------------------------------------===//
 // Vec32 运算（E_BIN / E_UN / INIT / 归约 / 广播）
 //
@@ -626,6 +625,67 @@ def XAIcoreVMax : XAIcoreVBin<0x0CA00000, "vmax">;
 def XAIcoreCfgCopyVC
     : XAIcoreInst<(outs), (ins XTVCOp:$d, XTVCOp:$s), "cfg.copy", "$d, $s",
                   0x76400002> {
+  bits<5> d;
+  bits<5> s;
+  let Inst{6-2} = d;
+  let Inst{11-7} = s;
+}
+
+// cfg.copy 的其余 7 个域（寄存器分配器插入的拷贝必须连描述符一起复制，否则
+// 目标寄存器的 dtype/len/base/strides 是陈旧值 —— 数据对了、元数据错了）。
+// 编码 = 0x70000002 | (reg_type << 25) | (1 << 22)；reg_type 见模拟器的
+// cfg_reg_type(sel2, vector_side)：tc=0 bc=1 ac=2 vc=3 tm=4 bm=5 am=6 vm=7。
+def XAIcoreCfgCopyTC
+    : XAIcoreInst<(outs), (ins XTTCOp:$d, XTTCOp:$s), "cfg.copy", "$d, $s",
+                  0x70400002> {
+  bits<5> d;
+  bits<5> s;
+  let Inst{6-2} = d;
+  let Inst{11-7} = s;
+}
+def XAIcoreCfgCopyAC
+    : XAIcoreInst<(outs), (ins XTACOp:$d, XTACOp:$s), "cfg.copy", "$d, $s",
+                  0x74400002> {
+  bits<5> d;
+  bits<5> s;
+  let Inst{6-2} = d;
+  let Inst{11-7} = s;
+}
+def XAIcoreCfgCopyBC
+    : XAIcoreInst<(outs), (ins XTBCOp:$d, XTBCOp:$s), "cfg.copy", "$d, $s",
+                  0x72400002> {
+  bits<5> d;
+  bits<5> s;
+  let Inst{6-2} = d;
+  let Inst{11-7} = s;
+}
+def XAIcoreCfgCopyTM
+    : XAIcoreInst<(outs), (ins XTTMOp:$d, XTTMOp:$s), "cfg.copy", "$d, $s",
+                  0x78400002> {
+  bits<5> d;
+  bits<5> s;
+  let Inst{6-2} = d;
+  let Inst{11-7} = s;
+}
+def XAIcoreCfgCopyAM
+    : XAIcoreInst<(outs), (ins XTAMOp:$d, XTAMOp:$s), "cfg.copy", "$d, $s",
+                  0x7C400002> {
+  bits<5> d;
+  bits<5> s;
+  let Inst{6-2} = d;
+  let Inst{11-7} = s;
+}
+def XAIcoreCfgCopyBM
+    : XAIcoreInst<(outs), (ins XTBMOp:$d, XTBMOp:$s), "cfg.copy", "$d, $s",
+                  0x7A400002> {
+  bits<5> d;
+  bits<5> s;
+  let Inst{6-2} = d;
+  let Inst{11-7} = s;
+}
+def XAIcoreCfgCopyVM
+    : XAIcoreInst<(outs), (ins XTVMOp:$d, XTVMOp:$s), "cfg.copy", "$d, $s",
+                  0x7E400002> {
   bits<5> d;
   bits<5> s;
   let Inst{6-2} = d;

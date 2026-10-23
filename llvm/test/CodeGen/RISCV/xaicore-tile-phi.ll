@@ -4,11 +4,14 @@
 ; 并在需要时插入 tcopy（ISA 的 Tile 拷贝指令）。这里验证：
 ;   * 两个来源的配置/load 各出现一次；
 ;   * 合流点只有一个 tload，作用在合并后的寄存器上；
-;   * 某个分支出现真正的 tcopy $dst, $src（RA 为 PHI 插入的拷贝）。
+;   * 某个分支出现真正的 tcopy $dst, $src（RA 为 PHI 插入的拷贝），并且
+;     紧邻它之前必须有 cfg.copy 把**描述符**也复制过去 —— 描述符是按物理
+;     寄存器编号索引的旁路状态，只搬数据会留下陈旧的形状/地址。
 ;
 ; CHECK-LABEL: phi_tile:
 ; CHECK: bnez
-; CHECK: tcopy [[A:t[0-9]+]], [[B:t[0-9]+]]
+; CHECK: cfg.copy tc[[#]], tc[[#]]
+; CHECK-NEXT: tcopy [[A:t[0-9]+]], [[B:t[0-9]+]]
 ; CHECK: tload [[A]]
 ; CHECK-NOT: __yai_
 ; CHECK: ret
