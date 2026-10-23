@@ -127,12 +127,22 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
 
   // 发射一条 YAI 机器指令，并把 Chain 推进到该指令之后。
   auto emit = [&](unsigned Opcode, ArrayRef<SDValue> Ops) {
+    // 只允许"没有 def"的指令走这条路（我们的 in-place 指令把目标寄存器当输入，
+    // 所以它们都是 NumDefs == 0）。有 def 的指令必须用 emitDef，否则
+    // InstrEmitter 的 optional-def 逻辑会让 MI 的操作数比描述符少一个，
+    // 而 MachineLICM 之类按 getDesc().getNumOperands() 遍历的 pass 会越界
+    // （__yai_vec32_copy 曾经就是这样）。
+    assert(Subtarget.getInstrInfo()->get(Opcode).getNumDefs() == 0 &&
+           "instructions with a def must be emitted through emitDef()");
     SmallVector<SDValue, 3> NodeOps(Ops.begin(), Ops.end());
     NodeOps.push_back(Chain);
     SDNode *Node = DAG.getMachineNode(Opcode, DL, MVT::Other, NodeOps);
     Chain = SDValue(Node, 0);
   };
 
+  // 注意：有 def 的指令必须用下面的 emitDef（把 def 声明成 DAG 结果），
+  // 不能用 emit（把 def 当操作数）——否则 InstrEmitter 的 optional-def 逻辑
+  // 会让生成的 MachineInstr 操作数比描述符少，MachineLICM 按描述符遍历时越界。
   // 定义一个寄存器值（*_create）。带 chain 让每次 create 都是独立节点，
   // 避免 SelectionDAG 对相同操作数的机器节点做 CSE。
   auto defineValue = [&](unsigned Pseudo, MVT VT) -> SDValue {
@@ -153,6 +163,8 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
 
   // 带操作数的“产生新值”机器节点（twiden/vcopy 这类 def 形态）。
   auto emitDef = [&](unsigned Opcode, MVT VT, ArrayRef<SDValue> Ops) -> SDValue {
+    assert(Subtarget.getInstrInfo()->get(Opcode).getNumDefs() == 1 &&
+           "emitDef() expects an instruction with exactly one def");
     SmallVector<SDValue, 3> NodeOps(Ops.begin(), Ops.end());
     NodeOps.push_back(Chain);
     SDNode *Node =
@@ -480,8 +492,8 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     expectResult(Vec32VT);
     SDValue Dst = defineValue(RISCV::XAIcoreVec32Create, Vec32VT);
     emit(RISCV::XAIcoreCfgCopyVC, {Dst, Args[0]});
-    emit(RISCV::XAIcoreVCopy, {Dst, Args[0]});
-    InVals.push_back(Dst);
+    SDValue CopyDst = emitDef(RISCV::XAIcoreVCopy, Vec32VT, {Args[0]});
+    InVals.push_back(CopyDst);
     return Chain;
   }
   case CallTileStore: {
