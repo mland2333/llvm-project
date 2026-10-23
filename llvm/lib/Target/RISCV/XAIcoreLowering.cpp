@@ -225,6 +225,7 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     CallTileSetStrides,
     CallTileSetStride,
     CallTileSetDType,
+    CallTileSetFlags,
     CallTileSetValidZonePair,
     CallTileSetValidZone,
     CallTileSetTranspose,
@@ -236,6 +237,7 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     CallAccSetStrides,
     CallAccSetStride,
     CallAccSetDType,
+    CallAccSetFlags,
     CallAccSetValidZonePair,
     CallAccSetValidZone,
     CallAccLoad,
@@ -250,6 +252,8 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     CallVecMulScalar,
     CallVecRsqrt,
     CallVecSetDType,
+    CallVecSetFlags,
+    CallVec8SetFlags,
     CallVecSetValidZone,
     CallVecSetStride,
     CallVecSetData,
@@ -304,6 +308,7 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
           .Case("__yai_tile_set_strides", CallTileSetStrides)
           .Case("__yai_tile_set_stride", CallTileSetStride)
           .Case("__yai_tile_set_dtype", CallTileSetDType)
+          .Case("__yai_tile_set_flags", CallTileSetFlags)
           .Case("__yai_tile_set_valid_zone_pair", CallTileSetValidZonePair)
           .Case("__yai_tile_set_valid_zone", CallTileSetValidZone)
           .Case("__yai_tile_set_transpose", CallTileSetTranspose)
@@ -315,6 +320,7 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
           .Case("__yai_acc_set_strides", CallAccSetStrides)
           .Case("__yai_acc_set_stride", CallAccSetStride)
           .Case("__yai_acc_set_dtype", CallAccSetDType)
+          .Case("__yai_acc_set_flags", CallAccSetFlags)
           .Case("__yai_acc_set_valid_zone_pair", CallAccSetValidZonePair)
           .Case("__yai_acc_set_valid_zone", CallAccSetValidZone)
           .Case("__yai_acc_load", CallAccLoad)
@@ -328,6 +334,8 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
           .Case("__yai_vec32_mul_scalar", CallVecMulScalar)
           .Case("__yai_vec32_rsqrt", CallVecRsqrt)
           .Case("__yai_vec32_set_dtype", CallVecSetDType)
+          .Case("__yai_vec32_set_flags", CallVecSetFlags)
+          .Case("__yai_vec8_set_flags", CallVec8SetFlags)
           .Case("__yai_vec32_set_valid_zone", CallVecSetValidZone)
           .Case("__yai_vec32_set_stride", CallVecSetStride)
           .Case("__yai_vec32_set_data", CallVecSetData)
@@ -427,6 +435,13 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     expectArgs(2);
     requireValue(0, TileVT);
     emit(RISCV::XAIcoreCfgSetxTCDtype, {Args[0], scalar(1)});
+    break;
+  }
+  case CallTileSetFlags: {
+    // tm.flags[1:0]：0 关闭 / 1 按行自增（rows*row_stride）/ 2 按列自增
+    expectArgs(2);
+    requireValue(0, TileVT);
+    emit(RISCV::XAIcoreCfgSetxTMFlags, {Args[0], scalar(1)});
     break;
   }
   case CallTileSetValidZonePair: {
@@ -545,6 +560,13 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
          {Args[0], scalar(2)});
     break;
   }
+  case CallAccSetFlags: {
+    // am.flags[1:0]：同 tm（访存后按行/列自增，只在成功后提交）
+    expectArgs(2);
+    requireValue(0, AccVT);
+    emit(RISCV::XAIcoreCfgSetxAMFlags, {Args[0], scalar(1)});
+    break;
+  }
   case CallAccSetDType: {
     expectArgs(2);
     requireValue(0, AccVT);
@@ -628,6 +650,20 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     expectArgs(2);
     requireValue(0, Vec32VT);
     emit(RISCV::XAIcoreCfgSetxVCDtype, {Args[0], scalar(1)});
+    break;
+  }
+  case CallVecSetFlags: {
+    // vm.flags[0]：1 = 每次访存后按 len*stride 自增
+    expectArgs(2);
+    requireValue(0, Vec32VT);
+    emit(RISCV::XAIcoreCfgSetxVMFlags, {Args[0], scalar(1)});
+    break;
+  }
+  case CallVec8SetFlags: {
+    // bm.flags[0]：vec8 的访存自增（目前内核没用 Vec8）
+    expectArgs(2);
+    requireValue(0, Vec8VT);
+    emit(RISCV::XAIcoreCfgSetxBMFlags, {Args[0], scalar(1)});
     break;
   }
   case CallVecSetValidZone: {

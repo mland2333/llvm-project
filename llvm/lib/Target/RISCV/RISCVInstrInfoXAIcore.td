@@ -582,6 +582,43 @@ def XAIcoreCfgSetxVMStride
   let Inst{6-2} = d;
   let Inst{11-7} = rs1;
 }
+
+// cfg.setx <descriptor>, flags —— 访存后地址自增模式。
+// tm/am: flags[1:0] = 0 关闭 / 1 按行(row_stride*rows) / 2 按列(col_stride*cols)
+// vm/bm: flags[0]  = 1 时按 len*stride 自增。硬件只在访存成功后提交自增。
+def XAIcoreCfgSetxTMFlags
+    : XAIcoreInst<(outs), (ins XTTMOp:$d, GPR:$rs1), "cfg.setx",
+                  "$d, flags, $rs1", 0x78080002> {
+  bits<5> d;
+  bits<5> rs1;
+  let Inst{6-2} = d;
+  let Inst{11-7} = rs1;
+}
+def XAIcoreCfgSetxAMFlags
+    : XAIcoreInst<(outs), (ins XTAMOp:$d, GPR:$rs1), "cfg.setx",
+                  "$d, flags, $rs1", 0x7C080002> {
+  bits<5> d;
+  bits<5> rs1;
+  let Inst{6-2} = d;
+  let Inst{11-7} = rs1;
+}
+def XAIcoreCfgSetxVMFlags
+    : XAIcoreInst<(outs), (ins XTVMOp:$d, GPR:$rs1), "cfg.setx",
+                  "$d, flags, $rs1", 0x7E040002> {
+  bits<5> d;
+  bits<5> rs1;
+  let Inst{6-2} = d;
+  let Inst{11-7} = rs1;
+}
+def XAIcoreCfgSetxBMFlags
+    : XAIcoreInst<(outs), (ins XTBMOp:$d, GPR:$rs1), "cfg.setx",
+                  "$d, flags, $rs1", 0x7A040002> {
+  bits<5> d;
+  bits<5> rs1;
+  let Inst{6-2} = d;
+  let Inst{11-7} = rs1;
+}
+
 //===----------------------------------------------------------------------===//
 // Vec32 运算（E_BIN / E_UN / INIT / 归约 / 广播）
 //
