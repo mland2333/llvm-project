@@ -928,6 +928,63 @@ float RISCVRegisterInfo::getSpillWeightScaleFactor(
   return getRegClassWeight(RC).RegWeight;
 }
 
+// XAIcore 的四个寄存器文件（tile/acc/vec32/vec8）都是**单端口双 bank**：
+// 每个类的前一半是一个 bank、后一半是另一个 bank。任何"同一条指令要读两个
+// 同类寄存器"的运算（mma 的 A/B、vec 的 vmax/vadd、acc 的 aadd/adiv……），
+// 只有两个操作数落在不同 bank 才能一拍读出；落在同一 bank 仍然正确，但要
+// 串行读两次（慢约一倍）。所以 RA 阶段尽量把它们分开。
+static cl::opt<bool> XAIcoreBankHints(
+    "riscv-xaicore-bank-hints", cl::Hidden, cl::init(true),
+    cl::desc("XAIcore: hint paired register operands into different register banks"));
+
+namespace {
+/// 寄存器在其类里的 bank（前半 = 0，后半 = 1）。
+unsigned xaicoreBank(MCPhysReg Reg, const TargetRegisterClass &RC) {
+  const unsigned Half = RC.getNumRegs() / 2;
+  unsigned Idx = 0;
+  for (MCPhysReg R : RC) {
+    if (R == Reg)
+      return Idx >= Half ? 1 : 0;
+    ++Idx;
+  }
+  llvm_unreachable("register not in class");
+}
+
+/// 是否是会同时读两个 tile 操作数的 mma。
+bool isXAIcoreMMA(unsigned Opcode) {
+  switch (Opcode) {
+  default:
+    return false;
+  case RISCV::XAIcoreMMANNZero:
+  case RISCV::XAIcoreMMANNAcc:
+  case RISCV::XAIcoreMMANTZero:
+  case RISCV::XAIcoreMMANTAcc:
+    return true;
+  }
+}
+
+/// 是否是 XAIcore 的四个"可分 bank"寄存器类之一。
+bool isXAIcoreBankedClass(const TargetRegisterClass &RC) {
+  return RISCV::XTTRegClass.hasSubClassEq(&RC) ||
+         RISCV::XTARegClass.hasSubClassEq(&RC) ||
+         RISCV::XTVRegClass.hasSubClassEq(&RC) ||
+         RISCV::XTBRegClass.hasSubClassEq(&RC);
+}
+} // namespace
+
+/// 把某个 bank 内的寄存器按 Order 顺序追加成 hint（软 hint，满了就回退）。
+static void addXAIcoreBankHints(const TargetRegisterClass &RC, unsigned Bank,
+                                ArrayRef<MCPhysReg> Order,
+                                SmallVectorImpl<MCPhysReg> &Hints) {
+  const unsigned Half = RC.getNumRegs() / 2;
+  unsigned Idx = 0;
+  for (MCPhysReg Reg : RC) {
+    const unsigned RegBank = Idx++ >= Half ? 1 : 0;
+    if (RegBank == Bank && is_contained(Order, Reg) && !is_contained(Hints, Reg))
+      Hints.push_back(Reg);
+  }
+}
+
 // Add two address hints to improve chances of being able to use a compressed
 // instruction.
 bool RISCVRegisterInfo::getRegAllocationHints(
@@ -942,6 +999,91 @@ bool RISCVRegisterInfo::getRegAllocationHints(
 
   if (!VRM || DisableRegAllocHints)
     return BaseImplRetVal;
+
+  // XAIcore：把"同一条指令里读到的两个同类寄存器"尽量分到不同 bank。
+  //
+  // 优先处理 tile 的 mma，并且**方向固定**为 A 走低 bank、B 走高 bank：GEMM 的
+  // 一组正好是 1 个 A + 8 个 B，而高 bank 恰好 8 个寄存器，所以这一组 8 条
+  // mma 能全部并行读。其余情况（vec32 的 vmax/vadd、acc 的 aadd/adiv、以及
+  // 任何两位同类寄存器的指令）用通用规则：如果对方已经分配，就提示相反的
+  // bank；对方还没分配则不猜（避免把方向搞反）。
+  //
+  // 都是**软 hint**：目标 bank 满了就回退到普通分配顺序，绝不会导致分配失败。
+  //
+  // 注意：VirtReg 是虚拟寄存器，RC->contains() 只判定物理寄存器，所以这里
+  // 一律用 hasSubClassEq(getRegClass(VirtReg)) 判类。
+  if (XAIcoreBankHints && VirtReg.isVirtual()) {
+    const TargetRegisterClass *RC = MRI->getRegClass(VirtReg);
+    if (isXAIcoreBankedClass(*RC)) {
+      // ---- ① tile 的 mma：固定方向 ----
+      bool Oriented = false;
+      if (RISCV::XTTRegClass.hasSubClassEq(RC)) {
+        for (const MachineInstr &MI : MRI->reg_nodbg_instructions(VirtReg)) {
+          if (!isXAIcoreMMA(MI.getOpcode()))
+            continue;
+          // mma 的操作数：0 = acc(XTA)，1 = A(tile)，2 = B(tile)。
+          unsigned OpNo = 0;
+          for (unsigned I = 0, E = MI.getNumOperands(); I != E; ++I) {
+            const MachineOperand &MO = MI.getOperand(I);
+            if (MO.isReg() && MO.getReg() == VirtReg) {
+              OpNo = I;
+              break;
+            }
+          }
+          if (OpNo != 1 && OpNo != 2)
+            continue;   // 不是 A/B（例如它是 acc），交给通用规则
+          Register OtherReg = MI.getOperand(OpNo == 1 ? 2 : 1).getReg();
+          unsigned OtherBank = 0;
+          bool Known = false;
+          if (OtherReg.isPhysical()) {
+            OtherBank = xaicoreBank(OtherReg, RISCV::XTTRegClass);
+            Known = true;
+          } else if (Register P = VRM->getPhys(OtherReg)) {
+            OtherBank = xaicoreBank(P, RISCV::XTTRegClass);
+            Known = true;
+          }
+          // A(1) 走低 bank、B(2) 走高 bank；若对方已分配则取它的反面。
+          addXAIcoreBankHints(RISCV::XTTRegClass,
+                              Known ? 1 - OtherBank : (OpNo == 1 ? 0 : 1), Order,
+                              Hints);
+          Oriented = true;
+          break;
+        }
+      }
+      // ---- ② 通用：任何"同指令读两个同类寄存器"的场合 ----
+      if (!Oriented) {
+        for (const MachineInstr &MI : MRI->reg_nodbg_instructions(VirtReg)) {
+          Register Other;
+          bool Found = false, Ambiguous = false;
+          for (unsigned I = 0, E = MI.getNumOperands(); I != E; ++I) {
+            const MachineOperand &MO = MI.getOperand(I);
+            if (!MO.isReg())
+              continue;
+            Register R = MO.getReg();
+            if (R == VirtReg)
+              continue;
+            if (R.isPhysical() ? !RC->contains(R)
+                               : !RC->hasSubClassEq(MRI->getRegClass(R)))
+              continue;   // 不同类，不构成 bank 冲突
+            if (Found) {  // 三个以上同类操作数：无法两两分开，放弃
+              Ambiguous = true;
+              break;
+            }
+            Other = R;
+            Found = true;
+          }
+          if (!Found || Ambiguous)
+            continue;
+          Register OtherPhys =
+              Other.isPhysical() ? Other : Register(VRM->getPhys(Other));
+          if (!OtherPhys)
+            continue;   // 对方还没分配 → 不猜
+          addXAIcoreBankHints(*RC, 1 - xaicoreBank(OtherPhys, *RC), Order, Hints);
+          break;
+        }
+      }
+    }
+  }
 
   // Add any two address hints after any copy hints.
   SmallSet<Register, 4> TwoAddrHints;
