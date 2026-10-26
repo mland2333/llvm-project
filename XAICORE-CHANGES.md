@@ -4,15 +4,16 @@
 + 一个 RISC-V vendor 扩展 `+xaicore`，让 C++ 通过 `__builtin_yai_*` 驱动一块独立的
 tile 寄存器文件（YAI Tile NPU）。
 
-统计：**39 个文件，+3825 / -7 行**（其中 22 个新文件，18 个是后端测试；含本文件自身）。
+统计：**39 个文件，+3967 / -7 行**（其中 22 个新文件，18 个是后端测试）。
 
 ```
-$ git diff --stat 292dc2b86f..HEAD | tail -1
- 39 files changed, 3825 insertions(+), 7 deletions(-)
+$ git diff --stat 292dc2b86f..02281ca78d | tail -1      # 直到 bank-hint 提交，稳定可复现
+ 39 files changed, 3967 insertions(+), 7 deletions(-)
 ```
 
-> 分两批：`fd1abb016b` 的扩展本体（36 文件 / +3346）、以及之后 3 个修复/增强提交
-> （+413，见 §9），外加本文件的说明更新。标签 `llvmorg-21.1.7` 在浅克隆里可能不存在，用基点 commit 比较等价。
+> 分批：`fd1abb016b` 扩展本体（36 文件 / +3346）→ 3 个修复/增强（+413，§9）→
+> bank hint（+142，§10）→ 本文件的说明更新（不计入上面的区间）。
+> 标签 `llvmorg-21.1.7` 在浅克隆里可能不存在，用基点 commit 比较等价。
 
 ---
 
@@ -228,3 +229,48 @@ logits 逐位不变。
 
 **注意它是跨指令状态**：换块必须重写 `base_addr`；尾块/非 32 倍数走显式地址的兜底
 路径天然覆盖；`gather` 不受影响。
+
+### 10. 四个寄存器文件的成对操作数分 bank（+142 行，1 个文件）
+
+`[RISCV] XAIcore: steer paired operands of all four register files into different banks`
+
+| 文件 | 增/删 | 作用 |
+|---|---|---|
+| `RISCVRegisterInfo.cpp` | +142 | `getRegAllocationHints` 里加"分 bank"软 hint；`-riscv-xaicore-bank-hints`（默认开）可 A/B |
+
+**硬件前提**：tile/acc/vec32/vec8 四个寄存器文件都是**单端口双 bank**，每类前半是
+bank0、后半是 bank1。任何"同一拍要读两个同类寄存器"的运算，只有落在不同 bank 才能
+一拍读出；同 bank 仍正确，但要串行读两次。
+
+| 类 | bank0 | bank1 |
+|---|---|---|
+| tile `XTT` | `t0..t7` | `t8..t15` |
+| acc `XTA` | `a0..a7` | `a8..a15` |
+| vec32 `XTV` | `v0..v15` | `v16..v31` |
+| vec8 `XTB` | `b0..b15` | `b16..b31` |
+
+**两条规则**（优先级从高到低）：
+
+1. **tile 的 mma 用固定方向**：A（操作数 1）走低 bank、B（操作数 2）走高 bank。
+   GEMM 一组正好是 1 个 A + 8 个 B，而高 bank 恰好 8 个寄存器 → 这一组 8 条 mma 全部并行读。
+2. **其余情况用通用规则**：看同一条指令里的另一个同类寄存器，若它已分配则提示相反的
+   bank；未分配则不猜（避免把方向搞反）。同类操作数 ≥3 个时放弃（两两分开无解）。
+
+**实测**（Qwen3-0.6B guest，静态统计 1,276 个成对运算）：
+
+| 指令 | hint 关（同 bank = 慢） | hint 开 |
+|---|---|---|
+| `mma`（tile A/B） | 244 / 276（88.4%） | **0 / 276（0%）** |
+| vec32 双源（`vmax/vadd/…`） | 960 / 960（100%） | **2 / 960（0.2%）** |
+| acc 双源（`aadd/asub/…`） | 40 / 40（100%） | 24 / 40（60%） |
+| **合计** | **1244 / 1276（97.5%）** | **26 / 1276（2.0%）** |
+
+**代价：零**——静态指令数（40,178）、guest 大小（160,732 B）、`cfg.copy`/`tcopy`/`vcopy`
+数量、动态指令数（prefill 32 = 2,319,041）全部不变，logits 逐位不变。
+
+**acc 只到 40% 的原因**：acc 只有 16 个，attention 层同时活 6 个、GEMM 一组要 8 个，
+高 bank 经常被占满 → 软 hint 只能回退。再往上要调整内核的 acc 使用顺序。
+
+**软 hint 的保证**：目标 bank 满了就回退到普通分配顺序，**不会导致分配失败**。
+
+**回归工具**（下游仓库）：`make bankconf` → `tools/bankconf.py`，按类统计同 bank 比例。
