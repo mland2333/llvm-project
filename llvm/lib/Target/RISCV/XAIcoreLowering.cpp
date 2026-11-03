@@ -321,6 +321,19 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     CallAccMulScalar,
     CallAccAddScalarVal,
     CallAccMulScalarVal,
+    CallAccAddVal,
+    CallAccSubVal,
+    CallAccMulVal,
+    CallAccAddVecVal,
+    CallAccSubVecVal,
+    CallAccMulVecVal,
+    CallAccExpVal,
+    CallVecAddVal,
+    CallVecSubVal,
+    CallVecMulVal,
+    CallVecMaxVal,
+    CallVecMulScalarVal,
+    CallVecExpVal,
     CallAccFill,
     CallAccExp,
     CallAccSilu,
@@ -401,6 +414,19 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
           .Case("__yai_acc_mul_scalar", CallAccMulScalar)
           .Case("__yai_acc_add_scalar_val", CallAccAddScalarVal)
           .Case("__yai_acc_mul_scalar_val", CallAccMulScalarVal)
+          .Case("__yai_acc_add", CallAccAddVal)
+          .Case("__yai_acc_sub", CallAccSubVal)
+          .Case("__yai_acc_mul", CallAccMulVal)
+          .Case("__yai_acc_add_vec_val", CallAccAddVecVal)
+          .Case("__yai_acc_sub_vec_val", CallAccSubVecVal)
+          .Case("__yai_acc_mul_vec_val", CallAccMulVecVal)
+          .Case("__yai_acc_exp_val", CallAccExpVal)
+          .Case("__yai_vec32_add_val", CallVecAddVal)
+          .Case("__yai_vec32_sub_val", CallVecSubVal)
+          .Case("__yai_vec32_mul_val", CallVecMulVal)
+          .Case("__yai_vec32_max_val", CallVecMaxVal)
+          .Case("__yai_vec32_mul_scalar_val", CallVecMulScalarVal)
+          .Case("__yai_vec32_exp_val", CallVecExpVal)
           .Case("__yai_acc_fill", CallAccFill)
           .Case("__yai_acc_exp", CallAccExp)
           .Case("__yai_acc_silu", CallAccSilu)
@@ -1016,6 +1042,86 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     unsigned Opcode = Zero ? RISCV::XAIcoreMMANTZero : RISCV::XAIcoreMMANTAcc;
     emit(Opcode, {Args[2], Args[0], Args[1]});
     break;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // 值形式（D != S）：post-RA 只补一条 cfg.copy 克隆描述符，不搬数据。
+  // 与下面的 *_InPlace 版本共用同一份真实指令编码。
+  //===--------------------------------------------------------------------===//
+  case CallAccAddVal:
+  case CallAccSubVal:
+  case CallAccMulVal: {
+    expectArgs(2);
+    requireValue(0, AccVT);
+    requireValue(1, AccVT);
+    expectResult(AccVT);
+    unsigned Pseudo = Call == CallAccAddVal   ? RISCV::XAIcoreAAddVal
+                      : Call == CallAccSubVal ? RISCV::XAIcoreASubVal
+                                              : RISCV::XAIcoreAMulVal;
+    InVals.push_back(emitDef(Pseudo, AccVT, {Args[0], Args[1]}));
+    return Chain;
+  }
+  case CallAccAddVecVal:
+  case CallAccSubVecVal:
+  case CallAccMulVecVal: {
+    // acc_{add,sub,mul}_vec_val(acc, vec, col)：col=true → byrow，false → bycol
+    expectArgs(3);
+    requireValue(0, AccVT);
+    requireValue(1, Vec32VT);
+    expectResult(AccVT);
+    uint64_t Col = constant(2);
+    unsigned RowPseudo = Call == CallAccAddVecVal   ? RISCV::XAIcoreAccAddVecByRowVal
+                         : Call == CallAccSubVecVal ? RISCV::XAIcoreAccSubVecByRowVal
+                                                    : RISCV::XAIcoreAccMulVecByRowVal;
+    unsigned ColPseudo = Call == CallAccAddVecVal   ? RISCV::XAIcoreAccAddVecByColVal
+                         : Call == CallAccSubVecVal ? RISCV::XAIcoreAccSubVecByColVal
+                                                    : RISCV::XAIcoreAccMulVecByColVal;
+    InVals.push_back(emitDef(Col ? RowPseudo : ColPseudo, AccVT, {Args[0], Args[1]}));
+    return Chain;
+  }
+  case CallAccExpVal: {
+    // exp = exp2(x·log2e)：先出值形式（D != S），再在 D 上原地 exp2。
+    expectArgs(1);
+    requireValue(0, AccVT);
+    expectResult(AccVT);
+    SDValue Log2e = DAG.getConstant(0x3FB8AA3B, DL, XLenVT);
+    SDValue Scaled = emitDef(RISCV::XAIcoreAMulXVal, AccVT, {Args[0], Log2e});
+    emit(RISCV::XAIcoreAExp2InPlace, {Scaled});
+    InVals.push_back(Scaled);
+    return Chain;
+  }
+  case CallVecAddVal:
+  case CallVecSubVal:
+  case CallVecMulVal:
+  case CallVecMaxVal: {
+    expectArgs(2);
+    requireValue(0, Vec32VT);
+    requireValue(1, Vec32VT);
+    expectResult(Vec32VT);
+    unsigned Pseudo = Call == CallVecAddVal   ? RISCV::XAIcoreVAddVal
+                      : Call == CallVecSubVal ? RISCV::XAIcoreVSubVal
+                      : Call == CallVecMulVal ? RISCV::XAIcoreVMulVal
+                                              : RISCV::XAIcoreVMaxVal;
+    InVals.push_back(emitDef(Pseudo, Vec32VT, {Args[0], Args[1]}));
+    return Chain;
+  }
+  case CallVecMulScalarVal: {
+    expectArgs(2);
+    requireValue(0, Vec32VT);
+    expectResult(Vec32VT);
+    InVals.push_back(emitDef(RISCV::XAIcoreVMulXVal, Vec32VT, {Args[0], fp32Operand(1)}));
+    return Chain;
+  }
+  case CallVecExpVal: {
+    // 同 Acc：vmulx(log2e) 出值，再在结果上原地 vexp2。
+    expectArgs(1);
+    requireValue(0, Vec32VT);
+    expectResult(Vec32VT);
+    SDValue Log2e = DAG.getConstant(0x3FB8AA3B, DL, XLenVT);
+    SDValue Scaled = emitDef(RISCV::XAIcoreVMulXVal, Vec32VT, {Args[0], Log2e});
+    emit(RISCV::XAIcoreVExp2InPlace, {Scaled});
+    InVals.push_back(Scaled);
+    return Chain;
   }
 
   case CallUnsupported:

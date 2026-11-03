@@ -199,6 +199,18 @@ def acc_rcp : YAIBuiltin<"void(...)">;
 def acc_quant_ext : YAIBuiltin<"void(...)">;
 def acc_add_scalar_val : YAIBuiltin<"_Vector<1024, int>(...)">;
 def acc_mul_scalar_val : YAIBuiltin<"_Vector<1024, int>(...)">;
+// 值形式（返回新寄存器，不搬数据）：post-RA 只补一条 cfg.copy。
+// Acc 二元的值形式复用上面的 acc_add/acc_sub/acc_mul。
+def acc_exp_val : YAIBuiltin<"_Vector<1024, int>(...)">;
+def acc_add_vec_val : YAIBuiltin<"_Vector<1024, int>(...)">;
+def acc_sub_vec_val : YAIBuiltin<"_Vector<1024, int>(...)">;
+def acc_mul_vec_val : YAIBuiltin<"_Vector<1024, int>(...)">;
+def vec32_add_val : YAIBuiltin<"_Vector<32, int>(...)">;
+def vec32_sub_val : YAIBuiltin<"_Vector<32, int>(...)">;
+def vec32_mul_val : YAIBuiltin<"_Vector<32, int>(...)">;
+def vec32_max_val : YAIBuiltin<"_Vector<32, int>(...)">;
+def vec32_mul_scalar_val : YAIBuiltin<"_Vector<32, int>(...)">;
+def vec32_exp_val : YAIBuiltin<"_Vector<32, int>(...)">;
 def acc_row_absmax : YAIBuiltin<"_Vector<32, int>(...)">;
 def acc_row_absmax_merge : YAIBuiltin<"void(...)">;
 def acc_row_argmax : YAIBuiltin<"_Vector<32, int>(...)">;

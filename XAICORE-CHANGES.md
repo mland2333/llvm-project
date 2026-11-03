@@ -328,3 +328,54 @@ prefill 在 28 层上每个 stage（h/q/k/v/attn/o/g/u/sw/量化缓冲/KV cache/
 
 `qwen3-tile-ops` 的 `make check` 会逐 stage 对比设备输出与 numpy 参考；`make small`
 （1 层 / 1024 词表）秒级覆盖同一套指令。两条指令的问题都是这套回归先发现的。
+
+---
+
+## 12. 值形式（D ≠ S）的 builtin 与 lowering
+
+ISA 的逐元素指令本来就有独立的 `D` 和 `S` 字段（`D != S` 合法），但编译器只把
+Acc 的标量乘/加做成了"派生值"形态，其余值形式（`Acc + Acc`、`acc * vec`、`exp`、
+Vec32 的二元/exp）在 `tile.h` 里都是 `copy() + 原地`，要多搬 4 KB（Acc）/128 B
+（Vec32）。
+
+### 12.1 新增 builtin（`clang/include/clang/Basic/BuiltinsRISCV.td`）
+
+```
+acc_add_vec_val / acc_sub_vec_val / acc_mul_vec_val   (acc, vec, col) -> Acc
+acc_exp_val                                            (acc)          -> Acc
+vec32_add_val / vec32_sub_val / vec32_mul_val / vec32_max_val
+vec32_mul_scalar_val / vec32_exp_val                                -> Vec32
+```
+
+`Acc` 二元复用已有的 `acc_add` / `acc_sub` / `acc_mul`（它们本来就是返回值
+签名，只是 lowering 没接）。
+
+### 12.2 lowering（`XAIcoreLowering.cpp`）
+
+新增分支把上述 builtin 映射到 `*Val` 伪指令，并统一用 `emitDef`：
+
+| builtin | 伪指令 | post-RA 展开 |
+|---|---|---|
+| `acc_add/sub/mul` | `XAIcoreA{Add,Sub,Mul}Val` | `cfg.copy acD,acS` + `aadd/asub/amul aD,aS,aB` |
+| `acc_{add,sub,mul}_vec_val` | `AccAddVecByRow/ByColVal` 等 | `cfg.copy` + `aaddv/asubv/amulv` |
+| `acc_exp_val` | `AMulXVal` + `AExp2InPlace` | `cfg.copy` + `amulx` + `aexp2` |
+| `vec32_{add,sub,mul,max}_val` | `V{Add,Sub,Mul,Max}Val` | `cfg.copy vcD,vcS` + `vadd/...` |
+| `vec32_mul_scalar_val` | `VMulXVal` | `cfg.copy` + `vmulx` |
+| `vec32_exp_val` | `VMulXVal` + `VExp2InPlace` | `cfg.copy` + `vmulx` + `vexp2` |
+
+展开规则在 `RISCVPostRAExpandPseudoInsts.cpp`：值形式只补 `cfg.copy`（新寄存器
+必须先有描述符），真实指令的 D 用新寄存器；原地形式把 D 钉成 S。
+**没有任何数据搬运指令**。
+
+### 12.3 回归
+
+`qwen3-tile-ops`：
+
+* `make value-ops`：14 个 case（Acc 二元/exp/广播/标量、Vec32 二元/exp/标量）
+  各自算值形式与 copy+原地，要求逐位相同并与 numpy 一致；
+* `make check`：28 层 0.6B 的逐 stage 对比仍然 max|Δ|=0；
+* attention 里 `corr` 改用值形式后，prefill 32 的指令数 2,370,235 → 2,369,787
+  （每 KV 块省 1 条 `vcopy`），logits 逐位不变。
+
+同时删掉了 `tile.h` 里永远无法 lower 的 `div()` / `operator/`（ISA 已删除除法，
+只保留 `rcp.approx`/`rsqrt.approx`/`exp2.approx`）。
