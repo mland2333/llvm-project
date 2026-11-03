@@ -153,7 +153,7 @@ def XAIcoreCfgSetxTCCols
 
 def XAIcoreCfgSetxTMBaseAddr
     : XAIcoreInst<(outs), (ins XTTMOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, base_addr, $rs1", 0x78000002> {
+                  "$d, base_addr, $rs1", 0x72000002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -162,7 +162,7 @@ def XAIcoreCfgSetxTMBaseAddr
 
 def XAIcoreCfgSetxTMRowStride
     : XAIcoreInst<(outs), (ins XTTMOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, row_stride_bytes, $rs1", 0x78020002> {
+                  "$d, row_stride_bytes, $rs1", 0x72020002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -171,7 +171,7 @@ def XAIcoreCfgSetxTMRowStride
 
 def XAIcoreCfgSetxTMColStride
     : XAIcoreInst<(outs), (ins XTTMOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, col_stride_bytes, $rs1", 0x78040002> {
+                  "$d, col_stride_bytes, $rs1", 0x72040002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -180,7 +180,7 @@ def XAIcoreCfgSetxTMColStride
 
 def XAIcoreCfgSetxTMTransform
     : XAIcoreInst<(outs), (ins XTTMOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, transform, $rs1", 0x78060002> {
+                  "$d, transform, $rs1", 0x72060002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -443,7 +443,7 @@ def XAIcoreCfgSetxACCols
 
 def XAIcoreCfgSetxAMBaseAddr
     : XAIcoreInst<(outs), (ins XTAMOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, base_addr, $rs1", 0x7C000002> {
+                  "$d, base_addr, $rs1", 0x76000002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -452,7 +452,7 @@ def XAIcoreCfgSetxAMBaseAddr
 
 def XAIcoreCfgSetxAMRowStride
     : XAIcoreInst<(outs), (ins XTAMOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, row_stride_bytes, $rs1", 0x7C020002> {
+                  "$d, row_stride_bytes, $rs1", 0x76020002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -461,7 +461,7 @@ def XAIcoreCfgSetxAMRowStride
 
 def XAIcoreCfgSetxAMColStride
     : XAIcoreInst<(outs), (ins XTAMOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, col_stride_bytes, $rs1", 0x7C040002> {
+                  "$d, col_stride_bytes, $rs1", 0x76040002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -549,7 +549,7 @@ def XAIcoreBCopy
 
 def XAIcoreCfgSetxVCDtype
     : XAIcoreInst<(outs), (ins XTVCOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, dtype, $rs1", 0x76000002> {
+                  "$d, dtype, $rs1", 0x78000002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -558,7 +558,7 @@ def XAIcoreCfgSetxVCDtype
 
 def XAIcoreCfgSetxVCLen
     : XAIcoreInst<(outs), (ins XTVCOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, len, $rs1", 0x76020002> {
+                  "$d, len, $rs1", 0x78020002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -567,7 +567,7 @@ def XAIcoreCfgSetxVCLen
 
 def XAIcoreCfgSetxVMBaseAddr
     : XAIcoreInst<(outs), (ins XTVMOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, base_addr, $rs1", 0x7E000002> {
+                  "$d, base_addr, $rs1", 0x7A000002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -576,7 +576,7 @@ def XAIcoreCfgSetxVMBaseAddr
 
 def XAIcoreCfgSetxVMStride
     : XAIcoreInst<(outs), (ins XTVMOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, stride_bytes, $rs1", 0x7E020002> {
+                  "$d, stride_bytes, $rs1", 0x7A020002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -588,7 +588,7 @@ def XAIcoreCfgSetxVMStride
 // vm/bm: flags[0]  = 1 时按 len*stride 自增。硬件只在访存成功后提交自增。
 def XAIcoreCfgSetxTMFlags
     : XAIcoreInst<(outs), (ins XTTMOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, flags, $rs1", 0x78080002> {
+                  "$d, flags, $rs1", 0x72080002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -596,7 +596,7 @@ def XAIcoreCfgSetxTMFlags
 }
 def XAIcoreCfgSetxAMFlags
     : XAIcoreInst<(outs), (ins XTAMOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, flags, $rs1", 0x7C080002> {
+                  "$d, flags, $rs1", 0x76080002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -604,7 +604,7 @@ def XAIcoreCfgSetxAMFlags
 }
 def XAIcoreCfgSetxVMFlags
     : XAIcoreInst<(outs), (ins XTVMOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, flags, $rs1", 0x7E040002> {
+                  "$d, flags, $rs1", 0x7A040002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -612,7 +612,7 @@ def XAIcoreCfgSetxVMFlags
 }
 def XAIcoreCfgSetxBMFlags
     : XAIcoreInst<(outs), (ins XTBMOp:$d, GPR:$rs1), "cfg.setx",
-                  "$d, flags, $rs1", 0x7A040002> {
+                  "$d, flags, $rs1", 0x7E080002> {
   bits<5> d;
   bits<5> rs1;
   let Inst{6-2} = d;
@@ -627,7 +627,7 @@ def XAIcoreCfgSetxBMFlags
 
 // vec32 标量运算：E_BIN，dom2=11 (vec32)、BX=1（src2 是标量 xS），funct4 同 E_BIN。
 class XAIcoreVBinX<bits<32> base, string mnemonic>
-    : XAIcoreInst<(outs), (ins XTVOp:$d, XTVOp:$s, GPR:$rs1), mnemonic,
+    : XAIcoreInst<(outs XTVOp:$d), (ins XTVOp:$s, GPR:$rs1), mnemonic,
                   "$d, $s, $rs1", base> {
   bits<5> d;
   bits<5> s;
@@ -642,7 +642,7 @@ def XAIcoreVMulX : XAIcoreVBinX<0x0E400000, "vmulx">;
 
 // vec32 二元：E_BIN，dom2=11 (vec32)、BX=0（第二个源也是 vec32）。
 class XAIcoreVBin<bits<32> base, string mnemonic>
-    : XAIcoreInst<(outs), (ins XTVOp:$d, XTVOp:$s1, XTVOp:$s2), mnemonic,
+    : XAIcoreInst<(outs XTVOp:$d), (ins XTVOp:$s1, XTVOp:$s2), mnemonic,
                   "$d, $s1, $s2", base> {
   bits<5> d;
   bits<5> s1;
@@ -661,7 +661,7 @@ def XAIcoreVMax : XAIcoreVBin<0x0CA00000, "vmax">;
 // cfg.copy vcD, vcS：整寄存器配置克隆（R4，funct3 = 001）。
 def XAIcoreCfgCopyVC
     : XAIcoreInst<(outs), (ins XTVCOp:$d, XTVCOp:$s), "cfg.copy", "$d, $s",
-                  0x76400002> {
+                  0x78400002> {
   bits<5> d;
   bits<5> s;
   let Inst{6-2} = d;
@@ -690,7 +690,7 @@ def XAIcoreCfgCopyAC
 }
 def XAIcoreCfgCopyBC
     : XAIcoreInst<(outs), (ins XTBCOp:$d, XTBCOp:$s), "cfg.copy", "$d, $s",
-                  0x72400002> {
+                  0x7C400002> {
   bits<5> d;
   bits<5> s;
   let Inst{6-2} = d;
@@ -698,7 +698,7 @@ def XAIcoreCfgCopyBC
 }
 def XAIcoreCfgCopyTM
     : XAIcoreInst<(outs), (ins XTTMOp:$d, XTTMOp:$s), "cfg.copy", "$d, $s",
-                  0x78400002> {
+                  0x72400002> {
   bits<5> d;
   bits<5> s;
   let Inst{6-2} = d;
@@ -706,7 +706,7 @@ def XAIcoreCfgCopyTM
 }
 def XAIcoreCfgCopyAM
     : XAIcoreInst<(outs), (ins XTAMOp:$d, XTAMOp:$s), "cfg.copy", "$d, $s",
-                  0x7C400002> {
+                  0x76400002> {
   bits<5> d;
   bits<5> s;
   let Inst{6-2} = d;
@@ -714,7 +714,7 @@ def XAIcoreCfgCopyAM
 }
 def XAIcoreCfgCopyBM
     : XAIcoreInst<(outs), (ins XTBMOp:$d, XTBMOp:$s), "cfg.copy", "$d, $s",
-                  0x7A400002> {
+                  0x7E400002> {
   bits<5> d;
   bits<5> s;
   let Inst{6-2} = d;
@@ -722,7 +722,7 @@ def XAIcoreCfgCopyBM
 }
 def XAIcoreCfgCopyVM
     : XAIcoreInst<(outs), (ins XTVMOp:$d, XTVMOp:$s), "cfg.copy", "$d, $s",
-                  0x7E400002> {
+                  0x7A400002> {
   bits<5> d;
   bits<5> s;
   let Inst{6-2} = d;
@@ -789,12 +789,16 @@ def XAIcoreAccRowAbsMax
 }
 
 // areduce.rows.argmax：dst 是 i32 向量（vc.dtype=i32、len=rows）。
+// areduce.rows.argmax：双目的地（vIdx=[6:2]、vVal=[16:12]）。
+// vIdx 的 vc.dtype 必须是 u32(3)，vVal 是 f32(4)。
 def XAIcoreAccRowArgMax
-    : XAIcoreInst<(outs), (ins XTVOp:$d, XTAOp:$s), "areduce.rows.argmax",
-                  "$d, $s", 0x11000002> {
+    : XAIcoreInst<(outs), (ins XTVOp:$vval, XTVOp:$d, XTAOp:$s),
+                  "areduce.rows.argmax", "$d, $vval, $s", 0x11000002> {
   bits<5> d;
+  bits<5> vval;
   bits<5> s;
   let Inst{6-2} = d;
+  let Inst{16-12} = vval;
   let Inst{11-7} = s;
 }
 
@@ -813,7 +817,7 @@ def XAIcoreImm5 : Operand<i32>;
 
 def XAIcoreAMaskTril
     : XAIcoreInst<(outs), (ins XTAOp:$d, XTAOp:$s, GPR:$xd, XAIcoreImm5:$fill),
-                  "amaskx.tril", "$d, $s, $xd, $fill", 0x44400000> {
+                  "amaskx.tril", "$d, $s, $xd, $fill", 0x46400000> {
   bits<5> d;
   bits<5> s;
   bits<5> xd;
@@ -826,7 +830,7 @@ def XAIcoreAMaskTril
 
 // Acc × Vec32 广播：E_BCAST，byrow 用 S[row]，bycol 用 S[col]。
 class XAIcoreAccVecBcast<bits<32> base, string mnemonic>
-    : XAIcoreInst<(outs), (ins XTAOp:$d, XTAOp:$s, XTVOp:$v), mnemonic,
+    : XAIcoreInst<(outs XTAOp:$d), (ins XTAOp:$s, XTVOp:$v), mnemonic,
                   "$d, $s, $v", base> {
   bits<5> d;
   bits<5> s;
@@ -836,14 +840,14 @@ class XAIcoreAccVecBcast<bits<32> base, string mnemonic>
   let Inst{16-12} = v;
 }
 
-def XAIcoreAccAddVecByRow : XAIcoreAccVecBcast<0x58000000, "aaddv.byrow">;
-def XAIcoreAccAddVecByCol : XAIcoreAccVecBcast<0x5A000000, "aaddv.bycol">;
-def XAIcoreAccSubVecByRow : XAIcoreAccVecBcast<0x58200000, "asubv.byrow">;
-def XAIcoreAccSubVecByCol : XAIcoreAccVecBcast<0x5A200000, "asubv.bycol">;
-def XAIcoreAccMulVecByRow : XAIcoreAccVecBcast<0x58400000, "amulv.byrow">;
-def XAIcoreAccMulVecByCol : XAIcoreAccVecBcast<0x5A400000, "amulv.bycol">;
-def XAIcoreAccDivVecByRow : XAIcoreAccVecBcast<0x58600000, "adivv.byrow">;
-def XAIcoreAccDivVecByCol : XAIcoreAccVecBcast<0x5A600000, "adivv.bycol">;
+def XAIcoreAccAddVecByRow : XAIcoreAccVecBcast<0x50000000, "aaddv.byrow">;
+def XAIcoreAccAddVecByCol : XAIcoreAccVecBcast<0x52000000, "aaddv.bycol">;
+def XAIcoreAccSubVecByRow : XAIcoreAccVecBcast<0x50200000, "asubv.byrow">;
+def XAIcoreAccSubVecByCol : XAIcoreAccVecBcast<0x52200000, "asubv.bycol">;
+def XAIcoreAccMulVecByRow : XAIcoreAccVecBcast<0x50400000, "amulv.byrow">;
+def XAIcoreAccMulVecByCol : XAIcoreAccVecBcast<0x52400000, "amulv.bycol">;
+def XAIcoreAccDivVecByRow : XAIcoreAccVecBcast<0x50600000, "adivv.byrow">;
+def XAIcoreAccDivVecByCol : XAIcoreAccVecBcast<0x52600000, "adivv.bycol">;
 
 //===----------------------------------------------------------------------===//
 // 行 gather（embedding）：tgather tD, vIndex
@@ -887,26 +891,35 @@ def XAIcoreTGather
 // （dtype=f32、len=rows）必须由用户先配置好。
 //===----------------------------------------------------------------------===//
 
+// ⚠️ 已知问题（见 handoff）：按 sim 的 decode_qnt 与 npu.inc 的权威宏，
+// QNT 的编码是 [21:17]=qf5（q8s32 必须为 0）、[16:12]=vScale5、
+// funct3 bit0 = QD（0 = Acc→Tile / aquant，1 = Tile→Acc / tdequant）。
+// 当前这两个 def 的 vscale 位置和 QD 位都与规范不符：
+//   - vscale 放在 [21:17]（应为 [16:12]）
+//   - "aquantx" 用 0x40400002（QD=1，实际是 tdequant 的方向）
+// 目前能跑通 prefill 是因为 scale 恰好落在 v0（qf5=0）且两侧配置一致；
+// decode（rows=1）时暴露为 invalid_configuration。
+// 修正需要同时改基址（aquantx → 0x40000002）与字段位置。
 def XAIcoreTQuantX
     : XAIcoreInst<(outs), (ins XTTOp:$d, XTVOp:$v, XTAOp:$s),
-                  "tquantx.rows.q8s32", "$d, $v, $s", 0x40400002> {
+                  "aquantx.rows.q8s32", "$d, $v, $s", 0x40000002> {
   bits<5> d;
   bits<5> v;
   bits<5> s;
   let Inst{6-2} = d;
   let Inst{11-7} = s;
-  let Inst{21-17} = v;
+  let Inst{16-12} = v;   // vScale5：[21:17] 是 qf5，q8s32 必须为 0
 }
 
 def XAIcoreTQuant
     : XAIcoreInst<(outs), (ins XTTOp:$d, XTVOp:$v, XTAOp:$s),
-                  "tquant.rows.q8s32", "$d, $v, $s", 0x40000002> {
+                  "tdequant.rows.q8s32", "$d, $v, $s", 0x40400002> {
   bits<5> d;
   bits<5> v;
   bits<5> s;
   let Inst{6-2} = d;
   let Inst{11-7} = s;
-  let Inst{21-17} = v;
+  let Inst{16-12} = v;   // vScale5：[21:17] 是 qf5，q8s32 必须为 0
 }
 
 //===----------------------------------------------------------------------===//
@@ -918,8 +931,11 @@ def XAIcoreTQuant
 //   vexp2.approx vD, vS      ：E_UNARY（vec32）
 //===----------------------------------------------------------------------===//
 
+// 带标量的 acc 二元运算（aaddx/amulx）。目的寄存器是**真正的 def**，
+// 允许 D ≠ S（ISA 只要求同域/同 dtype/同 shape）。
+// 原地用法由下面的 *_InPlace 伪指令在 post-RA 展开（把 D 钉成 S）。
 class XAIcoreABinX<bits<32> base, string mnemonic>
-    : XAIcoreInst<(outs), (ins XTAOp:$d, XTAOp:$s, GPR:$rs1), mnemonic,
+    : XAIcoreInst<(outs XTAOp:$d), (ins XTAOp:$s, GPR:$rs1), mnemonic,
                   "$d, $s, $rs1", base> {
   bits<5> d;
   bits<5> s;
@@ -932,6 +948,19 @@ class XAIcoreABinX<bits<32> base, string mnemonic>
 def XAIcoreAAddX : XAIcoreABinX<0x06000000, "aaddx">;
 def XAIcoreAMulX : XAIcoreABinX<0x06400000, "amulx">;
 
+// 每个 op 一对伪指令：原地（写回 S）与值形式（D 由 RA 分配）。
+// post-RA 展开：原地 = 真实指令（D 取 S 的物理寄存器）；
+//              值形式 = cfg.copy ac<D>, ac<S> + 真实指令（D 是新寄存器，
+//                       必须先把它 ac 描述符配好，否则模拟器拒绝）。
+// 伪指令基类：没有 encoding，也没有 pattern，所以要显式声明副作用属性。
+class XAIcorePseudo<dag outs, dag ins> : Pseudo<outs, ins, [], ""> {
+  let hasSideEffects = 1;
+  let mayLoad = 0;
+  let mayStore = 0;
+  let Predicates = [HasVendorXAIcore];
+}
+
+
 def XAIcoreAFillX
     : XAIcoreInst<(outs), (ins XTAOp:$d, GPR:$rs1), "afillx", "$d, $rs1",
                   0x24400001> {
@@ -942,7 +971,7 @@ def XAIcoreAFillX
 }
 
 class XAIcoreAUn<bits<32> base, string mnemonic>
-    : XAIcoreInst<(outs), (ins XTAOp:$d, XTAOp:$s), mnemonic, "$d, $s", base> {
+    : XAIcoreInst<(outs XTAOp:$d), (ins XTAOp:$s), mnemonic, "$d, $s", base> {
   bits<5> d;
   bits<5> s;
   let Inst{6-2} = d;
@@ -954,7 +983,7 @@ def XAIcoreAExp2 : XAIcoreAUn<0x14C00000, "aexp2.approx">;
 def XAIcoreASilu : XAIcoreAUn<0x15800000, "asilu.approx">;
 
 class XAIcoreVUn<bits<32> base, string mnemonic>
-    : XAIcoreInst<(outs), (ins XTVOp:$d, XTVOp:$s), mnemonic, "$d, $s", base> {
+    : XAIcoreInst<(outs XTVOp:$d), (ins XTVOp:$s), mnemonic, "$d, $s", base> {
   bits<5> d;
   bits<5> s;
   let Inst{6-2} = d;
@@ -981,11 +1010,27 @@ class XAIcoreMMA<bits<32> base, string mnemonic>
   let Inst{16-12} = b;
 }
 
-def XAIcoreMMANNZero : XAIcoreMMA<0x00000002, "mma.nn.zero.i8.i32">;
-def XAIcoreMMANNAcc : XAIcoreMMA<0x00400002, "mma.nn.acc.i8.i32">;
-// 右侧转置（attention 的 QK^T）：funct3 = 010 / 011。
-def XAIcoreMMANTZero : XAIcoreMMA<0x00800002, "mma.nt.zero.i8.i32">;
-def XAIcoreMMANTAcc : XAIcoreMMA<0x00C00002, "mma.nt.acc.i8.i32">;
+// 新 ISA 只保留 nt 布局（nn 已移除）：funct3 = 000 (zero) / 001 (acc)。
+def XAIcoreMMANTZero : XAIcoreMMA<0x00000002, "mma.nt.zero.i8.i32">;
+def XAIcoreMMANTAcc : XAIcoreMMA<0x00400002, "mma.nt.acc.i8.i32">;
+
+// 新 ISA 删除了 div：除法由 rcp.approx + mul 组成（E_UNARY funct3=4）。
+def XAIcoreARcp
+    : XAIcoreInst<(outs), (ins XTAOp:$d, XTAOp:$s), "arcp.approx", "$d, $s",
+                  0x15000000> {
+  bits<5> d;
+  bits<5> s;
+  let Inst{6-2} = d;
+  let Inst{11-7} = s;
+}
+def XAIcoreVRcp
+    : XAIcoreInst<(outs), (ins XTVOp:$d, XTVOp:$s), "vrcp.approx", "$d, $s",
+                  0x1D000000> {
+  bits<5> d;
+  bits<5> s;
+  let Inst{6-2} = d;
+  let Inst{11-7} = s;
+}
 
 // twiden.i8.i32 aD, tS：Tile i8 -> Acc i32 符号扩展（目标 shape 取源 tile）。
 def XAIcoreTWiden
@@ -1021,7 +1066,7 @@ def XAIcoreACvt
 //===----------------------------------------------------------------------===//
 
 class XAIcoreEbin<bits<32> base, string mnemonic>
-    : XAIcoreInst<(outs), (ins XTAOp:$d, XTAOp:$s1, XTAOp:$s2), mnemonic,
+    : XAIcoreInst<(outs XTAOp:$d), (ins XTAOp:$s1, XTAOp:$s2), mnemonic,
                   "$d, $s1, $s2", base> {
   bits<5> d;
   bits<5> s1;
@@ -1035,3 +1080,77 @@ def XAIcoreAAdd : XAIcoreEbin<0x04000000, "aadd">;
 def XAIcoreASub : XAIcoreEbin<0x04200000, "asub">;
 def XAIcoreAMul : XAIcoreEbin<0x04400000, "amul">;
 def XAIcoreADiv : XAIcoreEbin<0x04600000, "adiv">;
+
+//===----------------------------------------------------------------------===//
+// acc/vec 运算的「原地」与「值形式」伪指令。
+//   真实指令有 def（D 可与 S 不同，ISA 只要求同域/同 dtype/同 shape）；
+//   原地用法走 _INPLACE：post-RA 展开时把 D 钉成 S 的物理寄存器；
+//   值形式走 _VAL：展开时先 cfg.copy 克隆描述符，再让 D 用新寄存器。
+//===----------------------------------------------------------------------===//
+
+multiclass XAIcorePseudo_abin2 {
+  def InPlace : XAIcorePseudo<(outs), (ins XTAOp:$s1, XTAOp:$s2)>;
+  def Val     : XAIcorePseudo<(outs XTAOp:$d), (ins XTAOp:$s1, XTAOp:$s2)>;
+}
+
+multiclass XAIcorePseudo_ybcast {
+  def InPlace : XAIcorePseudo<(outs), (ins XTAOp:$s, XTVOp:$v)>;
+  def Val     : XAIcorePseudo<(outs XTAOp:$d), (ins XTAOp:$s, XTVOp:$v)>;
+}
+
+multiclass XAIcorePseudo_vbin2 {
+  def InPlace : XAIcorePseudo<(outs), (ins XTVOp:$s1, XTVOp:$s2)>;
+  def Val     : XAIcorePseudo<(outs XTVOp:$d), (ins XTVOp:$s1, XTVOp:$s2)>;
+}
+
+multiclass XAIcorePseudo_vbinx {
+  def InPlace : XAIcorePseudo<(outs), (ins XTVOp:$s, GPR:$rs1)>;
+  def Val     : XAIcorePseudo<(outs XTVOp:$d), (ins XTVOp:$s, GPR:$rs1)>;
+}
+
+multiclass XAIcorePseudo_abinx {
+  def InPlace : XAIcorePseudo<(outs), (ins XTAOp:$s, GPR:$rs1)>;
+  def Val     : XAIcorePseudo<(outs XTAOp:$d), (ins XTAOp:$s, GPR:$rs1)>;
+}
+
+multiclass XAIcorePseudo_aun {
+  def InPlace : XAIcorePseudo<(outs), (ins XTAOp:$s)>;
+  def Val     : XAIcorePseudo<(outs XTAOp:$d), (ins XTAOp:$s)>;
+}
+
+multiclass XAIcorePseudo_vun {
+  def InPlace : XAIcorePseudo<(outs), (ins XTVOp:$s)>;
+  def Val     : XAIcorePseudo<(outs XTVOp:$d), (ins XTVOp:$s)>;
+}
+
+
+defm XAIcoreAAddX : XAIcorePseudo_abinx;
+defm XAIcoreAMulX : XAIcorePseudo_abinx;
+defm XAIcoreAAdd : XAIcorePseudo_abin2;
+defm XAIcoreASub : XAIcorePseudo_abin2;
+defm XAIcoreAMul : XAIcorePseudo_abin2;
+defm XAIcoreADiv : XAIcorePseudo_abin2;
+
+defm XAIcoreAccAddVecByRow : XAIcorePseudo_ybcast;
+defm XAIcoreAccAddVecByCol : XAIcorePseudo_ybcast;
+defm XAIcoreAccSubVecByRow : XAIcorePseudo_ybcast;
+defm XAIcoreAccSubVecByCol : XAIcorePseudo_ybcast;
+defm XAIcoreAccMulVecByRow : XAIcorePseudo_ybcast;
+defm XAIcoreAccMulVecByCol : XAIcorePseudo_ybcast;
+defm XAIcoreAccDivVecByRow : XAIcorePseudo_ybcast;
+defm XAIcoreAccDivVecByCol : XAIcorePseudo_ybcast;
+
+defm XAIcoreVAdd : XAIcorePseudo_vbin2;
+defm XAIcoreVSub : XAIcorePseudo_vbin2;
+defm XAIcoreVMul : XAIcorePseudo_vbin2;
+defm XAIcoreVDiv : XAIcorePseudo_vbin2;
+defm XAIcoreVMax : XAIcorePseudo_vbin2;
+
+defm XAIcoreVAddX : XAIcorePseudo_vbinx;
+defm XAIcoreVMulX : XAIcorePseudo_vbinx;
+
+defm XAIcoreAAbs : XAIcorePseudo_aun;
+defm XAIcoreAExp2 : XAIcorePseudo_aun;
+defm XAIcoreASilu : XAIcorePseudo_aun;
+
+defm XAIcoreVExp2 : XAIcorePseudo_vun;

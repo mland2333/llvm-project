@@ -53,6 +53,39 @@ namespace {
   report_fatal_error(Twine("YAI builtin ") + BuiltinName + ": " + Message);
 }
 
+/// 真实运算指令 → 对应的「原地」伪指令（post-RA 把 D 钉成 S）。
+/// 运算指令现在都有 def，原地用法必须通过伪指令表达。
+static unsigned inPlaceOpc(unsigned Real) {
+  switch (Real) {
+  case RISCV::XAIcoreAAddX: return RISCV::XAIcoreAAddXInPlace;
+  case RISCV::XAIcoreAMulX: return RISCV::XAIcoreAMulXInPlace;
+  case RISCV::XAIcoreAAdd: return RISCV::XAIcoreAAddInPlace;
+  case RISCV::XAIcoreASub: return RISCV::XAIcoreASubInPlace;
+  case RISCV::XAIcoreAMul: return RISCV::XAIcoreAMulInPlace;
+  case RISCV::XAIcoreADiv: return RISCV::XAIcoreADivInPlace;
+  case RISCV::XAIcoreAccAddVecByRow: return RISCV::XAIcoreAccAddVecByRowInPlace;
+  case RISCV::XAIcoreAccAddVecByCol: return RISCV::XAIcoreAccAddVecByColInPlace;
+  case RISCV::XAIcoreAccSubVecByRow: return RISCV::XAIcoreAccSubVecByRowInPlace;
+  case RISCV::XAIcoreAccSubVecByCol: return RISCV::XAIcoreAccSubVecByColInPlace;
+  case RISCV::XAIcoreAccMulVecByRow: return RISCV::XAIcoreAccMulVecByRowInPlace;
+  case RISCV::XAIcoreAccMulVecByCol: return RISCV::XAIcoreAccMulVecByColInPlace;
+  case RISCV::XAIcoreAccDivVecByRow: return RISCV::XAIcoreAccDivVecByRowInPlace;
+  case RISCV::XAIcoreAccDivVecByCol: return RISCV::XAIcoreAccDivVecByColInPlace;
+  case RISCV::XAIcoreVAdd: return RISCV::XAIcoreVAddInPlace;
+  case RISCV::XAIcoreVSub: return RISCV::XAIcoreVSubInPlace;
+  case RISCV::XAIcoreVMul: return RISCV::XAIcoreVMulInPlace;
+  case RISCV::XAIcoreVDiv: return RISCV::XAIcoreVDivInPlace;
+  case RISCV::XAIcoreVMax: return RISCV::XAIcoreVMaxInPlace;
+  case RISCV::XAIcoreVAddX: return RISCV::XAIcoreVAddXInPlace;
+  case RISCV::XAIcoreVMulX: return RISCV::XAIcoreVMulXInPlace;
+  case RISCV::XAIcoreAAbs: return RISCV::XAIcoreAAbsInPlace;
+  case RISCV::XAIcoreAExp2: return RISCV::XAIcoreAExp2InPlace;
+  case RISCV::XAIcoreASilu: return RISCV::XAIcoreASiluInPlace;
+  case RISCV::XAIcoreVExp2: return RISCV::XAIcoreVExp2InPlace;
+  }
+  llvm_unreachable("no in-place pseudo for this opcode");
+}
+
 } // namespace
 
 SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
@@ -152,13 +185,45 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     return SDValue(Node, 0);
   };
 
-  // 归约的“合并”形式：临时 vec（克隆配置）← reduce(acc)，再 vec = vec Op 临时。
-  // 归约指令是覆盖写的，所以不能 1:1 映射。
+  // 通用 cfg.get（tc/ac 的 rows/cols）。
+  auto emitCfgGet = [&](unsigned Opcode, SDValue Src) -> SDValue {
+    SDNode *Node = DAG.getMachineNode(Opcode, DL,
+                                     DAG.getVTList(XLenVT, MVT::Other),
+                                     {Src, Chain});
+    Chain = SDValue(Node, 1);
+    return SDValue(Node, 0);
+  };
+
+  auto emitCfgGetACRows = [&](SDValue Acc) -> SDValue {
+    SDNode *Node =
+        DAG.getMachineNode(RISCV::XAIcoreCfgGetACRows, DL,
+                           DAG.getVTList(XLenVT, MVT::Other), {Acc, Chain});
+    Chain = SDValue(Node, 1);
+    return SDValue(Node, 0);
+  };
+
+  // 归约的“合并”形式：临时 vec ← reduce(acc)，再 vec = vec Op 临时。
+  // 归约是覆盖写的，所以要一个临时；两份向量都必须显式配好 dtype/len，
+  // 不能依赖调用方（否则目标向量是未配置状态，模拟器会拒绝）。
   auto emitReduceMerge = [&](unsigned ReduceOpc, unsigned MergeOpc) {
+    SDValue Rows = emitCfgGetACRows(Args[0]);
+    emit(RISCV::XAIcoreCfgSetxVCDtype, {Args[1], DAG.getConstant(4, DL, XLenVT)});
+    emit(RISCV::XAIcoreCfgSetxVCLen, {Args[1], Rows});
     SDValue Temp = defineValue(RISCV::XAIcoreVec32Create, Vec32VT);
     emit(RISCV::XAIcoreCfgCopyVC, {Temp, Args[1]});
     emit(ReduceOpc, {Temp, Args[0]});
-    emit(MergeOpc, {Args[1], Args[1], Temp});
+    emit(inPlaceOpc(MergeOpc), {Args[1], Temp});
+  };
+
+  // 产生新 Vec32 的归约（row_max/row_sum/row_sum_sq/row_absmax）：
+  // 新寄存器必须先把 vc.dtype=f32、vc.len=ac.rows 配好，areduce 才能执行。
+  auto emitReduceDef = [&](unsigned ReduceOpc, uint64_t DType = 4) -> SDValue {
+    SDValue Rows = emitCfgGetACRows(Args[0]);
+    SDValue Temp = defineValue(RISCV::XAIcoreVec32Create, Vec32VT);
+    emit(RISCV::XAIcoreCfgSetxVCDtype, {Temp, DAG.getConstant(DType, DL, XLenVT)});
+    emit(RISCV::XAIcoreCfgSetxVCLen, {Temp, Rows});
+    emit(ReduceOpc, {Temp, Args[0]});
+    return Temp;
   };
 
   // 带操作数的“产生新值”机器节点（twiden/vcopy 这类 def 形态）。
@@ -171,35 +236,6 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
         DAG.getMachineNode(Opcode, DL, DAG.getVTList(VT, MVT::Other), NodeOps);
     Chain = SDValue(Node, 1);
     return SDValue(Node, 0);
-  };
-
-  // 通用 cfg.get（tc/ac 的 rows/cols）。
-  auto emitCfgGet = [&](unsigned Opcode, SDValue Src) -> SDValue {
-    SDNode *Node = DAG.getMachineNode(Opcode, DL,
-                                     DAG.getVTList(XLenVT, MVT::Other),
-                                     {Src, Chain});
-    Chain = SDValue(Node, 1);
-    return SDValue(Node, 0);
-  };
-
-  // 取 ac.rows（归约产生的新 Vec32 需要 rows 作为 vc.len）。
-  auto emitCfgGetACRows = [&](SDValue Acc) -> SDValue {
-    SDNode *Node =
-        DAG.getMachineNode(RISCV::XAIcoreCfgGetACRows, DL,
-                           DAG.getVTList(XLenVT, MVT::Other), {Acc, Chain});
-    Chain = SDValue(Node, 1);
-    return SDValue(Node, 0);
-  };
-
-  // 产生新 Vec32 的归约（row_max/row_sum/row_sum_sq/row_absmax）：
-  // 新寄存器必须先把 vc.dtype=f32、vc.len=ac.rows 配好，areduce 才能执行。
-  auto emitReduceDef = [&](unsigned ReduceOpc, uint64_t DType = 4) -> SDValue {
-    SDValue Rows = emitCfgGetACRows(Args[0]);
-    SDValue Temp = defineValue(RISCV::XAIcoreVec32Create, Vec32VT);
-    emit(RISCV::XAIcoreCfgSetxVCDtype, {Temp, DAG.getConstant(DType, DL, XLenVT)});
-    emit(RISCV::XAIcoreCfgSetxVCLen, {Temp, Rows});
-    emit(ReduceOpc, {Temp, Args[0]});
-    return Temp;
   };
 
   auto expectResult = [&](MVT VT) {
@@ -251,6 +287,8 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     CallVecAddScalar,
     CallVecMulScalar,
     CallVecRsqrt,
+    CallVecRcp,
+    CallAccRcp,
     CallVecSetDType,
     CallVecSetFlags,
     CallVec8SetFlags,
@@ -263,6 +301,7 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     CallVecGather,
     CallTileWiden,
     CallVecCopyDef,
+    CallAccCopyDef,
     CallVecAdd,
     CallVecSub,
     CallVecMul,
@@ -280,6 +319,8 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     CallAccDivVec,
     CallAccAddScalar,
     CallAccMulScalar,
+    CallAccAddScalarVal,
+    CallAccMulScalarVal,
     CallAccFill,
     CallAccExp,
     CallAccSilu,
@@ -333,6 +374,8 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
           .Case("__yai_vec32_add_scalar", CallVecAddScalar)
           .Case("__yai_vec32_mul_scalar", CallVecMulScalar)
           .Case("__yai_vec32_rsqrt", CallVecRsqrt)
+          .Case("__yai_vec32_rcp", CallVecRcp)
+          .Case("__yai_acc_rcp", CallAccRcp)
           .Case("__yai_vec32_set_dtype", CallVecSetDType)
           .Case("__yai_vec32_set_flags", CallVecSetFlags)
           .Case("__yai_vec8_set_flags", CallVec8SetFlags)
@@ -345,6 +388,7 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
           .Case("__yai_vec32_gather_from_vec", CallVecGather)
           .Case("__yai_tile_widen", CallTileWiden)
           .Case("__yai_vec32_copy", CallVecCopyDef)
+          .Case("__yai_acc_copy", CallAccCopyDef)
           .Case("__yai_acc_row_sum_sq_merge", CallAccRowSumSq)
           .Case("__yai_acc_row_sum_merge", CallAccRowSum)
           .Case("__yai_acc_row_max_merge", CallAccRowMax)
@@ -355,6 +399,8 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
           .Case("__yai_acc_div_vec", CallAccDivVec)
           .Case("__yai_acc_add_scalar", CallAccAddScalar)
           .Case("__yai_acc_mul_scalar", CallAccMulScalar)
+          .Case("__yai_acc_add_scalar_val", CallAccAddScalarVal)
+          .Case("__yai_acc_mul_scalar_val", CallAccMulScalarVal)
           .Case("__yai_acc_fill", CallAccFill)
           .Case("__yai_acc_exp", CallAccExp)
           .Case("__yai_acc_silu", CallAccSilu)
@@ -511,6 +557,18 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     InVals.push_back(CopyDst);
     return Chain;
   }
+  case CallAccCopyDef: {
+    // acc_copy(acc) -> 新 Acc 值。和 Vec32 一样：目的寄存器是新值，
+    // 必须先克隆 ac 配置（dtype/rows/cols），再 acopy。
+    expectArgs(1);
+    requireValue(0, AccVT);
+    expectResult(AccVT);
+    SDValue Dst = defineValue(RISCV::XAIcoreACreate, AccVT);
+    emit(RISCV::XAIcoreCfgCopyAC, {Dst, Args[0]});
+    SDValue CopyDst = emitDef(RISCV::XAIcoreACopy, AccVT, {Args[0]});
+    InVals.push_back(CopyDst);
+    return Chain;
+  }
   case CallTileStore: {
     expectArgs(1);
     requireValue(0, TileVT);
@@ -619,7 +677,7 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
                       : Call == CallAccMul ? RISCV::XAIcoreAMul
                                            : RISCV::XAIcoreADiv;
     // dest 和 src1 都是同一个 Acc（原地运算）。
-    emit(Opcode, {Args[0], Args[0], Args[1]});
+    emit(inPlaceOpc(Opcode), {Args[0], Args[1]});
     break;
   }
 
@@ -636,7 +694,7 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     } else {
       unsigned Opcode = Call == CallVecAddScalar ? RISCV::XAIcoreVAddX
                                                  : RISCV::XAIcoreVMulX;
-      emit(Opcode, {Args[0], Args[0], fp32Operand(1)});
+      emit(inPlaceOpc(Opcode), {Args[0], fp32Operand(1)});
     }
     break;
   }
@@ -644,6 +702,18 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     expectArgs(1);
     requireValue(0, Vec32VT);
     emit(RISCV::XAIcoreVRsqrt, {Args[0], Args[0]});
+    break;
+  }
+  case CallVecRcp: {
+    expectArgs(1);
+    requireValue(0, Vec32VT);
+    emit(RISCV::XAIcoreVRcp, {Args[0], Args[0]});
+    break;
+  }
+  case CallAccRcp: {
+    expectArgs(1);
+    requireValue(0, AccVT);
+    emit(RISCV::XAIcoreARcp, {Args[0], Args[0]});
     break;
   }
   case CallVecSetDType: {
@@ -735,7 +805,7 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
                       : Call == CallAccAddVec ? RISCV::XAIcoreAccAddVecByCol
                       : Call == CallAccSubVec ? RISCV::XAIcoreAccSubVecByCol
                                               : RISCV::XAIcoreAccDivVecByCol;
-    emit(Col ? RowOpc : ColOpc, {Args[0], Args[0], Args[1]});
+    emit(inPlaceOpc(Col ? RowOpc : ColOpc), {Args[0], Args[1]});
     break;
   }
 
@@ -746,10 +816,23 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
   case CallAccMulScalar: {
     expectArgs(2);
     requireValue(0, AccVT);
-    unsigned Opcode = Call == CallAccAddScalar ? RISCV::XAIcoreAAddX
-                                               : RISCV::XAIcoreAMulX;
-    emit(Opcode, {Args[0], Args[0], fp32Operand(1)});
+    // 原地：发伪指令，post-RA 展开成真实指令并把 D 钉成 S。
+    unsigned Pseudo = Call == CallAccAddScalar ? RISCV::XAIcoreAAddXInPlace
+                                               : RISCV::XAIcoreAMulXInPlace;
+    emit(Pseudo, {Args[0], fp32Operand(1)});
     break;
+  }
+  case CallAccAddScalarVal:
+  case CallAccMulScalarVal: {
+    // 值形式：D 是新寄存器，post-RA 会先克隆 ac 描述符再执行，
+    // 所以这里不需要任何 copy 或 cfg（展开时补）。
+    expectArgs(2);
+    requireValue(0, AccVT);
+    expectResult(AccVT);
+    unsigned Pseudo = Call == CallAccAddScalarVal ? RISCV::XAIcoreAAddXVal
+                                                  : RISCV::XAIcoreAMulXVal;
+    InVals.push_back(emitDef(Pseudo, AccVT, {Args[0], fp32Operand(1)}));
+    return Chain;
   }
   case CallAccFill: {
     expectArgs(2);
@@ -762,20 +845,21 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     expectArgs(1);
     requireValue(0, AccVT);
     SDValue Log2e = DAG.getConstant(0x3FB8AA3B, DL, XLenVT);
-    emit(RISCV::XAIcoreAMulX, {Args[0], Args[0], Log2e});
-    emit(RISCV::XAIcoreAExp2, {Args[0], Args[0]});
+    // amulx 现在是带 def 的指令，原地用法必须走 pseudo（D 会钉成 S）。
+    emit(RISCV::XAIcoreAMulXInPlace, {Args[0], Log2e});
+    emit(inPlaceOpc(RISCV::XAIcoreAExp2), {Args[0]});
     break;
   }
   case CallAccSilu: {
     expectArgs(1);
     requireValue(0, AccVT);
-    emit(RISCV::XAIcoreASilu, {Args[0], Args[0]});
+    emit(inPlaceOpc(RISCV::XAIcoreASilu), {Args[0]});
     break;
   }
   case CallAccAbs: {
     expectArgs(1);
     requireValue(0, AccVT);
-    emit(RISCV::XAIcoreAAbs, {Args[0], Args[0]});
+    emit(inPlaceOpc(RISCV::XAIcoreAAbs), {Args[0]});
     break;
   }
   case CallAccToFp32: {
@@ -785,11 +869,22 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     break;
   }
   case CallAccRowArgMaxDef: {
-    // argmax 的结果是 i32 向量（vc.dtype = 2）。
+    // 新 ISA 的 argmax 是双目的地：vIdx（u32）与 vVal（f32）。
     expectArgs(1);
     requireValue(0, AccVT);
     expectResult(Vec32VT);
-    InVals.push_back(emitReduceDef(RISCV::XAIcoreAccRowArgMax, 2));
+    SDValue Rows = emitCfgGetACRows(Args[0]);
+    SDValue Idx = defineValue(RISCV::XAIcoreVec32Create, Vec32VT);
+    emit(RISCV::XAIcoreCfgSetxVCDtype, {Idx, DAG.getConstant(3, DL, XLenVT)});
+    emit(RISCV::XAIcoreCfgSetxVCLen, {Idx, Rows});
+    SDValue Val = defineValue(RISCV::XAIcoreVec32Create, Vec32VT);
+    emit(RISCV::XAIcoreCfgSetxVCDtype, {Val, DAG.getConstant(4, DL, XLenVT)});
+    emit(RISCV::XAIcoreCfgSetxVCLen, {Val, Rows});
+    // 操作数顺序按 .td：(ins XTVOp:$vval, XTVOp:$d, XTAOp:$s) —— vval 在前。
+    // 写成 {Idx, Val} 会把两者换位：vIdx 得到 f32 配置、vVal 得到 u32，
+    // 模拟器按 [6:2]=u32 / [16:12]=f32 检查，于是报 invalid_configuration。
+    emit(RISCV::XAIcoreAccRowArgMax, {Val, Idx, Args[0]});
+    InVals.push_back(Idx);
     return Chain;
   }
   case CallAccRowSumDef:
@@ -879,7 +974,7 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
                       : Call == CallVecMul ? RISCV::XAIcoreVMul
                       : Call == CallVecDiv ? RISCV::XAIcoreVDiv
                                            : RISCV::XAIcoreVMax;
-    emit(Opcode, {Args[0], Args[0], Args[1]});
+    emit(inPlaceOpc(Opcode), {Args[0], Args[1]});
     break;
   }
   case CallVecExp: {
@@ -887,8 +982,8 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     expectArgs(1);
     requireValue(0, Vec32VT);
     SDValue Log2e = DAG.getConstant(0x3FB8AA3B, DL, XLenVT);
-    emit(RISCV::XAIcoreVMulX, {Args[0], Args[0], Log2e});
-    emit(RISCV::XAIcoreVExp2, {Args[0], Args[0]});
+    emit(inPlaceOpc(RISCV::XAIcoreVMulX), {Args[0], Log2e});
+    emit(inPlaceOpc(RISCV::XAIcoreVExp2), {Args[0]});
     break;
   }
 
@@ -911,11 +1006,14 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
       failXAIcore(Name,
                   "only nn/nt mma variants are supported (left operand must "
                   "not be transposed)");
-    unsigned Opcode;
-    if (RightTranspose)
-      Opcode = Zero ? RISCV::XAIcoreMMANTZero : RISCV::XAIcoreMMANTAcc;
-    else
-      Opcode = Zero ? RISCV::XAIcoreMMANNZero : RISCV::XAIcoreMMANNAcc;
+    // 新 ISA 只保留 nt 布局（mma.nt.*）。nn 已从指令集移除：要求调用方把右操作数
+    // 按 nt 布局加载（或用描述符 transform 转置），这里显式报错而不是静默换语义。
+    if (!RightTranspose)
+      failXAIcore(Name,
+                  "mma.nn has been removed from the ISA; load the right operand "
+                  "in the nt layout (or set the descriptor transform) and pass "
+                  "rt = true");
+    unsigned Opcode = Zero ? RISCV::XAIcoreMMANTZero : RISCV::XAIcoreMMANTAcc;
     emit(Opcode, {Args[2], Args[0], Args[1]});
     break;
   }
@@ -925,3 +1023,5 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
   }
   return Chain;
 }
+
+  // 取 ac.rows（归约产生的新 Vec32 需要 rows 作为 vc.len）。

@@ -955,8 +955,6 @@ bool isXAIcoreMMA(unsigned Opcode) {
   switch (Opcode) {
   default:
     return false;
-  case RISCV::XAIcoreMMANNZero:
-  case RISCV::XAIcoreMMANNAcc:
   case RISCV::XAIcoreMMANTZero:
   case RISCV::XAIcoreMMANTAcc:
     return true;

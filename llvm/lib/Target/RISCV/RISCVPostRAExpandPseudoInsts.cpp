@@ -77,6 +77,110 @@ bool RISCVPostRAExpandPseudo::expandMI(MachineBasicBlock &MBB,
     return expandMovImm(MBB, MBBI);
   case RISCV::PseudoMovAddr:
     return expandMovAddr(MBB, MBBI);
+  // acc/vec 运算的原地/值形式伪指令：统一展开。
+  // 原地：D 取 S 的物理寄存器；值形式：先把描述符（ac 或 vc）克隆到 D。
+  case RISCV::XAIcoreAAddXInPlace:
+  case RISCV::XAIcoreAAddXVal:
+  case RISCV::XAIcoreAMulXInPlace:
+  case RISCV::XAIcoreAMulXVal:
+  case RISCV::XAIcoreAAddInPlace:
+  case RISCV::XAIcoreAAddVal:
+  case RISCV::XAIcoreASubInPlace:
+  case RISCV::XAIcoreASubVal:
+  case RISCV::XAIcoreAMulInPlace:
+  case RISCV::XAIcoreAMulVal:
+  case RISCV::XAIcoreADivInPlace:
+  case RISCV::XAIcoreADivVal:
+  case RISCV::XAIcoreAccAddVecByRowInPlace:
+  case RISCV::XAIcoreAccAddVecByRowVal:
+  case RISCV::XAIcoreAccAddVecByColInPlace:
+  case RISCV::XAIcoreAccAddVecByColVal:
+  case RISCV::XAIcoreAccSubVecByRowInPlace:
+  case RISCV::XAIcoreAccSubVecByRowVal:
+  case RISCV::XAIcoreAccSubVecByColInPlace:
+  case RISCV::XAIcoreAccSubVecByColVal:
+  case RISCV::XAIcoreAccMulVecByRowInPlace:
+  case RISCV::XAIcoreAccMulVecByRowVal:
+  case RISCV::XAIcoreAccMulVecByColInPlace:
+  case RISCV::XAIcoreAccMulVecByColVal:
+  case RISCV::XAIcoreAccDivVecByRowInPlace:
+  case RISCV::XAIcoreAccDivVecByRowVal:
+  case RISCV::XAIcoreAccDivVecByColInPlace:
+  case RISCV::XAIcoreAccDivVecByColVal:
+  case RISCV::XAIcoreVAddInPlace:
+  case RISCV::XAIcoreVAddVal:
+  case RISCV::XAIcoreVSubInPlace:
+  case RISCV::XAIcoreVSubVal:
+  case RISCV::XAIcoreVMulInPlace:
+  case RISCV::XAIcoreVMulVal:
+  case RISCV::XAIcoreVDivInPlace:
+  case RISCV::XAIcoreVDivVal:
+  case RISCV::XAIcoreVMaxInPlace:
+  case RISCV::XAIcoreVMaxVal:
+  case RISCV::XAIcoreVAddXInPlace:
+  case RISCV::XAIcoreVAddXVal:
+  case RISCV::XAIcoreVMulXInPlace:
+  case RISCV::XAIcoreVMulXVal:
+  case RISCV::XAIcoreAAbsInPlace:
+  case RISCV::XAIcoreAAbsVal:
+  case RISCV::XAIcoreAExp2InPlace:
+  case RISCV::XAIcoreAExp2Val:
+  case RISCV::XAIcoreASiluInPlace:
+  case RISCV::XAIcoreASiluVal:
+  case RISCV::XAIcoreVExp2InPlace:
+  case RISCV::XAIcoreVExp2Val: {
+    struct Entry { unsigned InPlace, Val, Real; bool IsVec; };
+    static const Entry Table[] = {
+      {RISCV::XAIcoreAAddXInPlace, RISCV::XAIcoreAAddXVal, RISCV::XAIcoreAAddX, false},
+      {RISCV::XAIcoreAMulXInPlace, RISCV::XAIcoreAMulXVal, RISCV::XAIcoreAMulX, false},
+      {RISCV::XAIcoreAAddInPlace, RISCV::XAIcoreAAddVal, RISCV::XAIcoreAAdd, false},
+      {RISCV::XAIcoreASubInPlace, RISCV::XAIcoreASubVal, RISCV::XAIcoreASub, false},
+      {RISCV::XAIcoreAMulInPlace, RISCV::XAIcoreAMulVal, RISCV::XAIcoreAMul, false},
+      {RISCV::XAIcoreADivInPlace, RISCV::XAIcoreADivVal, RISCV::XAIcoreADiv, false},
+      {RISCV::XAIcoreAccAddVecByRowInPlace, RISCV::XAIcoreAccAddVecByRowVal, RISCV::XAIcoreAccAddVecByRow, false},
+      {RISCV::XAIcoreAccAddVecByColInPlace, RISCV::XAIcoreAccAddVecByColVal, RISCV::XAIcoreAccAddVecByCol, false},
+      {RISCV::XAIcoreAccSubVecByRowInPlace, RISCV::XAIcoreAccSubVecByRowVal, RISCV::XAIcoreAccSubVecByRow, false},
+      {RISCV::XAIcoreAccSubVecByColInPlace, RISCV::XAIcoreAccSubVecByColVal, RISCV::XAIcoreAccSubVecByCol, false},
+      {RISCV::XAIcoreAccMulVecByRowInPlace, RISCV::XAIcoreAccMulVecByRowVal, RISCV::XAIcoreAccMulVecByRow, false},
+      {RISCV::XAIcoreAccMulVecByColInPlace, RISCV::XAIcoreAccMulVecByColVal, RISCV::XAIcoreAccMulVecByCol, false},
+      {RISCV::XAIcoreAccDivVecByRowInPlace, RISCV::XAIcoreAccDivVecByRowVal, RISCV::XAIcoreAccDivVecByRow, false},
+      {RISCV::XAIcoreAccDivVecByColInPlace, RISCV::XAIcoreAccDivVecByColVal, RISCV::XAIcoreAccDivVecByCol, false},
+      {RISCV::XAIcoreVAddInPlace, RISCV::XAIcoreVAddVal, RISCV::XAIcoreVAdd, true},
+      {RISCV::XAIcoreVSubInPlace, RISCV::XAIcoreVSubVal, RISCV::XAIcoreVSub, true},
+      {RISCV::XAIcoreVMulInPlace, RISCV::XAIcoreVMulVal, RISCV::XAIcoreVMul, true},
+      {RISCV::XAIcoreVDivInPlace, RISCV::XAIcoreVDivVal, RISCV::XAIcoreVDiv, true},
+      {RISCV::XAIcoreVMaxInPlace, RISCV::XAIcoreVMaxVal, RISCV::XAIcoreVMax, true},
+      {RISCV::XAIcoreVAddXInPlace, RISCV::XAIcoreVAddXVal, RISCV::XAIcoreVAddX, true},
+      {RISCV::XAIcoreVMulXInPlace, RISCV::XAIcoreVMulXVal, RISCV::XAIcoreVMulX, true},
+      {RISCV::XAIcoreAAbsInPlace, RISCV::XAIcoreAAbsVal, RISCV::XAIcoreAAbs, false},
+      {RISCV::XAIcoreAExp2InPlace, RISCV::XAIcoreAExp2Val, RISCV::XAIcoreAExp2, false},
+      {RISCV::XAIcoreASiluInPlace, RISCV::XAIcoreASiluVal, RISCV::XAIcoreASilu, false},
+      {RISCV::XAIcoreVExp2InPlace, RISCV::XAIcoreVExp2Val, RISCV::XAIcoreVExp2, true},
+    };
+    const unsigned Opc = MBBI->getOpcode();
+    const Entry *E = nullptr;
+    for (const Entry &Cand : Table)
+      if (Cand.InPlace == Opc || Cand.Val == Opc) { E = &Cand; break; }
+    if (!E)
+      llvm_unreachable("unknown acc/vec arithmetic pseudo");
+    const bool IsValue = (Opc == E->Val);
+    Register Src = MBBI->getOperand(IsValue ? 1 : 0).getReg();
+    Register Dst = IsValue ? MBBI->getOperand(0).getReg() : Src;
+    if (IsValue) {
+      // 新寄存器的描述符是空的，必须先克隆源寄存器的配置。
+      unsigned CfgCopy = E->IsVec ? RISCV::XAIcoreCfgCopyVC : RISCV::XAIcoreCfgCopyAC;
+      BuildMI(MBB, MBBI, MBBI->getDebugLoc(), TII->get(CfgCopy))
+          .addReg(Dst)
+          .addReg(Src);
+    }
+    // 真实指令：D 后面跟原来的 ins 操作数（跳过 D 本身）。
+    auto NewMI = BuildMI(MBB, MBBI, MBBI->getDebugLoc(), TII->get(E->Real), Dst)
+                     .addReg(Src);   // 真实指令的 $s1（之前漏了，导致操作数少一个）
+    for (unsigned i = (IsValue ? 2 : 1), e = MBBI->getNumOperands(); i != e; ++i)
+      NewMI.add(MBBI->getOperand(i));
+    MBBI->eraseFromParent();
+    return true;
+  }
   case RISCV::XAIcoreTCreate:
   case RISCV::XAIcoreACreate:
   case RISCV::XAIcoreVec32Create:
