@@ -815,17 +815,22 @@ def XAIcoreCfgGetACRows
 // amaskx.tril aD, aS, xD, fill5：fill5 是 5 bit 立即数（码表见 ISA）。
 def XAIcoreImm5 : Operand<i32>;
 
+// amask.tril aD, aS, xDelta, fill5
+//   [27:26] dom2 = 01 (Acc), [25] FS = 0 (immediate fill5),
+//   [24:22] funct3 = 001 (tril), [21:17] xDelta, [16:12] fill5.
+// The fill value is a fill5 immediate (the lowering only ever passes constants
+// from the fill5 table), so the Scalar-fill (FS=1) form is not used here.
 def XAIcoreAMaskTril
     : XAIcoreInst<(outs), (ins XTAOp:$d, XTAOp:$s, GPR:$xd, XAIcoreImm5:$fill),
-                  "amaskx.tril", "$d, $s, $xd, $fill", 0x46400000> {
+                  "amask.tril", "$d, $s, $xd, $fill", 0x44400000> {
   bits<5> d;
   bits<5> s;
   bits<5> xd;
   bits<5> fill;
   let Inst{6-2} = d;
   let Inst{11-7} = s;
-  let Inst{16-12} = xd;
-  let Inst{21-17} = fill;
+  let Inst{16-12} = fill;
+  let Inst{21-17} = xd;
 }
 
 // Acc × Vec32 广播：E_BCAST，byrow 用 S[row]，bycol 用 S[col]。
@@ -891,35 +896,35 @@ def XAIcoreTGather
 // （dtype=f32、len=rows）必须由用户先配置好。
 //===----------------------------------------------------------------------===//
 
-// ⚠️ 已知问题（见 handoff）：按 sim 的 decode_qnt 与 npu.inc 的权威宏，
-// QNT 的编码是 [21:17]=qf5（q8s32 必须为 0）、[16:12]=vScale5、
-// funct3 bit0 = QD（0 = Acc→Tile / aquant，1 = Tile→Acc / tdequant）。
-// 当前这两个 def 的 vscale 位置和 QD 位都与规范不符：
-//   - vscale 放在 [21:17]（应为 [16:12]）
-//   - "aquantx" 用 0x40400002（QD=1，实际是 tdequant 的方向）
-// 目前能跑通 prefill 是因为 scale 恰好落在 v0（qf5=0）且两侧配置一致；
-// decode（rows=1）时暴露为 invalid_configuration。
-// 修正需要同时改基址（aquantx → 0x40000002）与字段位置。
+// 字段位置以 ISA 手册与 Tile-NPU-Sim 的 decode_qnt 为准：
+//   [21:17] = vScale5（scale 向量寄存器号）
+//   [16:12] = index5（保留，必须为 0）
+//   [24:22] = funct3：000 = aquant（动态 scale）/ tdequant，001 = aquantx
+//   [27:26] = dom2：00 = 目的 Tile（aquant），01 = 目的 Acc（tdequant）
+// 因此基址：
+//   aquant.rows.q8s32（动态 scale）   0x40000002
+//   aquantx.rows.q8s32（外部 scale）  0x40400002
+//   tdequant.rows.f32                 0x44000002
 def XAIcoreTQuantX
     : XAIcoreInst<(outs), (ins XTTOp:$d, XTVOp:$v, XTAOp:$s),
-                  "aquantx.rows.q8s32", "$d, $v, $s", 0x40000002> {
+                  "aquantx.rows.q8s32", "$d, $v, $s", 0x40400002> {
   bits<5> d;
   bits<5> v;
   bits<5> s;
   let Inst{6-2} = d;
   let Inst{11-7} = s;
-  let Inst{16-12} = v;   // vScale5：[21:17] 是 qf5，q8s32 必须为 0
+  let Inst{21-17} = v;   // vScale5
 }
 
 def XAIcoreTQuant
     : XAIcoreInst<(outs), (ins XTTOp:$d, XTVOp:$v, XTAOp:$s),
-                  "tdequant.rows.q8s32", "$d, $v, $s", 0x40400002> {
+                  "aquant.rows.q8s32", "$d, $v, $s", 0x40000002> {
   bits<5> d;
   bits<5> v;
   bits<5> s;
   let Inst{6-2} = d;
   let Inst{11-7} = s;
-  let Inst{16-12} = v;   // vScale5：[21:17] 是 qf5，q8s32 必须为 0
+  let Inst{21-17} = v;   // vScale5
 }
 
 //===----------------------------------------------------------------------===//

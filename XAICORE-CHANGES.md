@@ -274,3 +274,57 @@ bank0、后半是 bank1。任何"同一拍要读两个同类寄存器"的运算�
 **软 hint 的保证**：目标 bank 满了就回退到普通分配顺序，**不会导致分配失败**。
 
 **回归工具**（下游仓库）：`make bankconf` → `tools/bankconf.py`，按类统计同 bank 比例。
+
+---
+
+## 11. 编码修复：QNT 与 E_MASK（Qwen3 推理不对的直接原因）
+
+ISA 更新（`mma.nn` 删除、Acc 减到 16、argmax 双目的地、gather 索引 u32 等）之后，
+`RISCVInstrInfoXAIcore.td` 里有两条指令的编码没有跟上。两者都不影响编译/链接，
+只在模拟器执行时报错或算错，所以必须靠端到端回归才能发现。
+
+### 11.1 `aquant` / `aquantx`（QNT，major4=0100）
+
+权威编码（`Tile-NPU-ISA` 与 `Tile-NPU-Sim::decode_qnt`、`tests/guest/include/npu.inc`）：
+
+```
+[27:26] dom2   00 = 目的 Tile（aquant），01 = 目的 Acc（tdequant）
+[25]    IS     0
+[24:22] funct3 000 = 动态 scale（aquant 写回 vScale）/ tdequant
+               001 = 外部 scale（aquantx，不改 vScale）
+[21:17] vScale5
+[16:12] index5 必须为 0
+```
+
+原来的两个 def 把"动态/外部"写反了，并且把 vScale 放到了 `[16:12]`：
+
+| 指令 | 旧基址 | 新基址 |
+|---|---|---|
+| `aquant.rows.q8s32`（动态） | 0x40400002 | **0x40000002** |
+| `aquantx.rows.q8s32`（外部） | 0x40000002 | **0x40400002** |
+| `tdequant.rows.f32` | 0x40400002（错方向） | **0x44000002** |
+
+症状：`quant_ext()`（embedding / softmax P / per-token 量化都用它）编出来的字里
+`index5=5`，模拟器直接 `illegal_instruction`；即使绕过，动态/外部形态互换会让
+`vc.len`/scale 语义整条错位。
+
+### 11.2 `amask.tril`（E_MASK，major4=0100、dom2=01）
+
+权威编码：`[21:17] = xDelta`、`[16:12] = fill5`、`[25] = FS`（0 = 立即数 fill，
+1 = Scalar xFill）。
+
+原来的 def `XAIcoreAMaskTril` 基址为 `0x46400000`（`sel3=011`，即 `amaskx` 的标量
+fill 形态），且把两个字段交换了：`[21:17]=fill`、`[16:12]=xd`。于是因果 mask 实际
+执行的是"`xDelta` = fill 码 8、被 mask 的位置填入某个标量寄存器的值"。
+
+症状：prefill 时只有**最后一行** logits 正确（该行所有 KV 位置都可见，不需要 mask），
+其余行的 attention 全部污染；单层模型上表现为 `attn` 相对误差 0.5 量级。
+
+修正为 `amask.tril`（`0x44400000`）+ 字段对调。修复后 Qwen3-0.6B 的 32-token
+prefill 在 28 层上每个 stage（h/q/k/v/attn/o/g/u/sw/量化缓冲/KV cache/logits）都与
+逐指令 numpy 参考**逐位相同**。
+
+### 11.3 回归方式
+
+`qwen3-tile-ops` 的 `make check` 会逐 stage 对比设备输出与 numpy 参考；`make small`
+（1 层 / 1024 词表）秒级覆盖同一套指令。两条指令的问题都是这套回归先发现的。
