@@ -927,6 +927,22 @@ def XAIcoreTQuant
   let Inst{21-17} = v;   // vScale5
 }
 
+// tdequant.rows.f32 aD, tS, vScale : aD[i,j] = f32(tS[i,j]) * vScale[i]
+// QNT R4: [27:26] dom2 = 01 (Acc dest), [25] IS = 0, [24:22] funct3 = 000,
+//         [21:17] vScale5, [16:12] index5 = 0, [11:7] tS, [6:2] aD.
+// 目的 Acc 的 ac 配置（dtype = f32、rows/cols = 源 tile 的有效形状）由调用方先
+// 设置好，所以这里建模成"无 def"：目的寄存器是 use，硬件原地写。
+def XAIcoreTDequant
+    : XAIcoreInst<(outs), (ins XTAOp:$d, XTTOp:$s, XTVOp:$v),
+                  "tdequant.rows.f32", "$d, $s, $v", 0x44000002> {
+  bits<5> d;
+  bits<5> s;
+  bits<5> v;
+  let Inst{6-2} = d;
+  let Inst{11-7} = s;
+  let Inst{21-17} = v;   // vScale5
+}
+
 //===----------------------------------------------------------------------===//
 // Acc 标量运算 / fill / 一元
 //
@@ -1157,5 +1173,8 @@ defm XAIcoreVMulX : XAIcorePseudo_vbinx;
 defm XAIcoreAAbs : XAIcorePseudo_aun;
 defm XAIcoreAExp2 : XAIcorePseudo_aun;
 defm XAIcoreASilu : XAIcorePseudo_aun;
+defm XAIcoreARcp : XAIcorePseudo_aun;
 
 defm XAIcoreVExp2 : XAIcorePseudo_vun;
+defm XAIcoreVRcp : XAIcorePseudo_vun;
+defm XAIcoreVRsqrt : XAIcorePseudo_vun;

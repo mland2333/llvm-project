@@ -123,10 +123,16 @@ bool RISCVPostRAExpandPseudo::expandMI(MachineBasicBlock &MBB,
   case RISCV::XAIcoreVMulXVal:
   case RISCV::XAIcoreAAbsInPlace:
   case RISCV::XAIcoreAAbsVal:
+  case RISCV::XAIcoreARcpInPlace:
+  case RISCV::XAIcoreARcpVal:
   case RISCV::XAIcoreAExp2InPlace:
   case RISCV::XAIcoreAExp2Val:
   case RISCV::XAIcoreASiluInPlace:
   case RISCV::XAIcoreASiluVal:
+  case RISCV::XAIcoreVRcpInPlace:
+  case RISCV::XAIcoreVRcpVal:
+  case RISCV::XAIcoreVRsqrtInPlace:
+  case RISCV::XAIcoreVRsqrtVal:
   case RISCV::XAIcoreVExp2InPlace:
   case RISCV::XAIcoreVExp2Val: {
     struct Entry { unsigned InPlace, Val, Real; bool IsVec; };
@@ -156,6 +162,9 @@ bool RISCVPostRAExpandPseudo::expandMI(MachineBasicBlock &MBB,
       {RISCV::XAIcoreAExp2InPlace, RISCV::XAIcoreAExp2Val, RISCV::XAIcoreAExp2, false},
       {RISCV::XAIcoreASiluInPlace, RISCV::XAIcoreASiluVal, RISCV::XAIcoreASilu, false},
       {RISCV::XAIcoreVExp2InPlace, RISCV::XAIcoreVExp2Val, RISCV::XAIcoreVExp2, true},
+      {RISCV::XAIcoreARcpInPlace, RISCV::XAIcoreARcpVal, RISCV::XAIcoreARcp, false},
+      {RISCV::XAIcoreVRcpInPlace, RISCV::XAIcoreVRcpVal, RISCV::XAIcoreVRcp, true},
+      {RISCV::XAIcoreVRsqrtInPlace, RISCV::XAIcoreVRsqrtVal, RISCV::XAIcoreVRsqrt, true},
     };
     const unsigned Opc = MBBI->getOpcode();
     const Entry *E = nullptr;

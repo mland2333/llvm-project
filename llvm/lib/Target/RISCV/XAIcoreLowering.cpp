@@ -334,6 +334,10 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     CallVecMaxVal,
     CallVecMulScalarVal,
     CallVecExpVal,
+    CallAccRcpVal,
+    CallVecRcpVal,
+    CallVecRsqrtVal,
+    CallTileDequant,
     CallAccFill,
     CallAccExp,
     CallAccSilu,
@@ -427,6 +431,10 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
           .Case("__yai_vec32_max_val", CallVecMaxVal)
           .Case("__yai_vec32_mul_scalar_val", CallVecMulScalarVal)
           .Case("__yai_vec32_exp_val", CallVecExpVal)
+          .Case("__yai_acc_rcp_val", CallAccRcpVal)
+          .Case("__yai_vec32_rcp_val", CallVecRcpVal)
+          .Case("__yai_vec32_rsqrt_val", CallVecRsqrtVal)
+          .Case("__yai_tile_dequant", CallTileDequant)
           .Case("__yai_acc_fill", CallAccFill)
           .Case("__yai_acc_exp", CallAccExp)
           .Case("__yai_acc_silu", CallAccSilu)
@@ -1122,6 +1130,35 @@ SDValue llvm::lowerXAIcoreBuiltinCall(const RISCVSubtarget &Subtarget,
     emit(RISCV::XAIcoreVExp2InPlace, {Scaled});
     InVals.push_back(Scaled);
     return Chain;
+  }
+
+  case CallAccRcpVal: {
+    expectArgs(1);
+    requireValue(0, AccVT);
+    expectResult(AccVT);
+    InVals.push_back(emitDef(RISCV::XAIcoreARcpVal, AccVT, {Args[0]}));
+    return Chain;
+  }
+  case CallVecRcpVal:
+  case CallVecRsqrtVal: {
+    expectArgs(1);
+    requireValue(0, Vec32VT);
+    expectResult(Vec32VT);
+    unsigned Pseudo = Call == CallVecRcpVal ? RISCV::XAIcoreVRcpVal
+                                            : RISCV::XAIcoreVRsqrtVal;
+    InVals.push_back(emitDef(Pseudo, Vec32VT, {Args[0]}));
+    return Chain;
+  }
+  case CallTileDequant: {
+    // tile_dequant(tile, scale, acc)：aD[i,j] = f32(tS[i,j]) * vScale[i]
+    // 目的 Acc 的 ac 配置（dtype=f32、rows/cols=源 tile 形状）由调用方先配好，
+    // 所以这条指令建模成"无 def"（目的寄存器当 use，硬件原地写）。
+    expectArgs(3);
+    requireValue(0, TileVT);
+    requireValue(1, Vec32VT);
+    requireValue(2, AccVT);
+    emit(RISCV::XAIcoreTDequant, {Args[2], Args[0], Args[1]});
+    break;
   }
 
   case CallUnsupported:

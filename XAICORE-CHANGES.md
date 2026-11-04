@@ -377,5 +377,23 @@ vec32_mul_scalar_val / vec32_exp_val                                -> Vec32
 * attention 里 `corr` 改用值形式后，prefill 32 的指令数 2,370,235 → 2,369,787
   （每 KV 块省 1 条 `vcopy`），logits 逐位不变。
 
+### 12.4 补充：一元值形式与 `tdequant`
+
+同一套伪指令机制补上了三个一元运算和反量化：
+
+| builtin | 指令 | post-RA |
+|---|---|---|
+| `acc_rcp_val` | `arcp.approx` | `cfg.copy` + `arcp` |
+| `vec32_rcp_val` / `vec32_rsqrt_val` | `vrcp.approx` / `vrsqrt.approx` | `cfg.copy` + 对应指令 |
+| `tile_dequant(tile, scale, acc)` | `tdequant.rows.f32` | 无 pseudo（目的寄存器是 use） |
+
+`tdequant` 的编码 `0x44000002`（QNT：dom2=01 目的 Acc、funct3=000、vScale5 在
+`[21:17]`）。它和 `twiden` 一样是"写进已有寄存器"的语义：目的 Acc 的 ac 配置
+（dtype=f32、rows/cols=源 tile 形状）由调用方先设置，因此指令建模为无 def，
+`Tile::dequant(scale, out)` 用 out 参数而不是返回值。
+
 同时删掉了 `tile.h` 里永远无法 lower 的 `div()` / `operator/`（ISA 已删除除法，
 只保留 `rcp.approx`/`rsqrt.approx`/`exp2.approx`）。
+
+回归：`make value-ops` 现在覆盖 19 个 case（含 `vmax`/`vrcp`/`vrsqrt`/`arcp` 和
+`tdequant`），要求值形式与参考路径逐位相同；`make check` 仍 max|Δ|=0。
